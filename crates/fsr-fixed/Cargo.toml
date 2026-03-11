@@ -1,0 +1,9 @@
+[package]
+name = "fsr-fixed"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+serde = { workspace = true }
+thiserror = { workspace = true }

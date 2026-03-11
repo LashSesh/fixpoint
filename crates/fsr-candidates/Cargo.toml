@@ -1,0 +1,11 @@
+[package]
+name = "fsr-candidates"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+fsr-mirror = { path = "../fsr-mirror" }
+fsr-resonance = { path = "../fsr-resonance" }
+serde = { workspace = true }

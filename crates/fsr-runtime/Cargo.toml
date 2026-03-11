@@ -1,0 +1,29 @@
+[package]
+name = "fsr-runtime"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "fsr"
+path = "src/main.rs"
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+fsr-temporal = { path = "../fsr-temporal" }
+fsr-nullcenter = { path = "../fsr-nullcenter" }
+fsr-resonance = { path = "../fsr-resonance" }
+fsr-gate = { path = "../fsr-gate" }
+fsr-mirror = { path = "../fsr-mirror" }
+fsr-candidates = { path = "../fsr-candidates" }
+fsr-csp = { path = "../fsr-csp" }
+fsr-hedge = { path = "../fsr-hedge" }
+fsr-calibration = { path = "../fsr-calibration" }
+fsr-chain = { path = "../fsr-chain" }
+fsr-governance = { path = "../fsr-governance" }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+rand = { workspace = true }
