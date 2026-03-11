@@ -1,4 +1,4 @@
-# FIXPOINT SWARM-R v4.0
+# LeveRAGE (AinSoft-R: Finance)
 
 **Deterministisches Rust-Handelssystem mit DSHAE-Arbitrage-Engine und Desktop-GUI**
 
