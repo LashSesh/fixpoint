@@ -16,4 +16,5 @@ anyhow = { workspace = true }
 fsr-ttcp = { path = "../fsr-ttcp" }
 fsr-tui = { path = "../fsr-tui" }
 fsr-governance = { path = "../fsr-governance" }
+fsr-calibration = { path = "../fsr-calibration" }
 serde_json = { workspace = true }

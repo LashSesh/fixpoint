@@ -109,11 +109,8 @@ impl ConfigWatcher {
     pub fn poll(&mut self, current: &FsrConfig) -> Option<FsrConfig> {
         // Drain all queued notify events.
         let mut saw_event = false;
-        loop {
-            match self.rx.try_recv() {
-                Ok(_) => { saw_event = true; }
-                Err(_) => break,
-            }
+        while self.rx.try_recv().is_ok() {
+            saw_event = true;
         }
         if !saw_event {
             return None;

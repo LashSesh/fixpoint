@@ -444,6 +444,7 @@ dependencies = [
  "fsr-fixed",
  "fsr-types",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -463,6 +464,7 @@ version = "3.0.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "fsr-calibration",
  "fsr-fixed",
  "fsr-governance",
  "fsr-ttcp",
@@ -552,6 +554,7 @@ name = "fsr-runtime"
 version = "3.0.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "clap",
  "crossbeam-channel",
  "fsr-calibration",
@@ -576,6 +579,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "tokio",
  "tokio-tungstenite",
  "tracing",

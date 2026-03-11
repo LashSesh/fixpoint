@@ -60,6 +60,20 @@ pub enum EventTag {
     SnapshotWritten,
     ConfigReloaded,
     TtcpCrystal,
+    // Phase 3 additions (additive only — do not remove or reorder above variants)
+    RecordingStarted,
+    RecordingFrame,
+    BacktestCompleted,
+    PromotionGateChecked,
+    PromotionApproved,
+    SniperArmed,
+    SniperExecuted,
+    SniperCooldown,
+    SniperDisarmed,
+    DailyLossLimitHit,
+    RiskLimitBreached,
+    ReplayStarted,
+    ReplayCompleted,
 }
 
 /// A hash-chained evidence event (spec §18).

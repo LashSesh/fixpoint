@@ -106,10 +106,10 @@ impl ChainReader {
             .filter_map(|e| e.ok())
             .map(|e| e.path())
             .filter(|p| {
-                p.extension().map_or(false, |ext| ext == "bin")
+                p.extension().is_some_and(|ext| ext == "bin")
                     && p.file_stem()
                         .and_then(|s| s.to_str())
-                        .map_or(false, |s| s.starts_with(prefix))
+                        .is_some_and(|s| s.starts_with(prefix))
             })
             .collect();
         entries.sort();
@@ -182,10 +182,10 @@ impl SystemSnapshot {
             .filter_map(|e| e.ok())
             .map(|e| e.path())
             .filter(|p| {
-                p.extension().map_or(false, |ext| ext == "json")
+                p.extension().is_some_and(|ext| ext == "json")
                     && p.file_stem()
                         .and_then(|s| s.to_str())
-                        .map_or(false, |s| s.starts_with("snap_"))
+                        .is_some_and(|s| s.starts_with("snap_"))
             })
             .collect();
         if entries.is_empty() {

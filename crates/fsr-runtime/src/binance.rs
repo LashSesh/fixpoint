@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Binance venue adapter (Phase 2 §2.6) — gated behind feature flags.
 //!
 //! Features:

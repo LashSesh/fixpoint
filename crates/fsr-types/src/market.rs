@@ -96,6 +96,25 @@ pub enum VenueError {
     NetworkError(String),
 }
 
+/// Trade side for cross-venue candidate legs (spec §7.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Side {
+    Buy,
+    Sell,
+}
+
+/// A single leg of a (potentially cross-venue) candidate route (spec §7.2).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CandidateLeg {
+    pub venue: crate::ids::VenueId,
+    pub pair: crate::ids::TradingPair,
+    pub side: Side,
+    /// Price in basis points.
+    pub price: Q32,
+    /// Available quantity in lots.
+    pub available_qty: Q32,
+}
+
 /// Normalized route signal observation, ri ∈ [0,1] (as Q32 ∈ [0, ONE]).
 /// ONE = 1 << 32.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
