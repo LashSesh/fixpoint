@@ -1,0 +1,12 @@
+[package]
+name = "fsr-ttcp"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+fsr-resonance = { path = "../fsr-resonance" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }

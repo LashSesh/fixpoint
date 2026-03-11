@@ -10,6 +10,9 @@
 //!
 //! Evidence Law: two replays with identical inputs must produce identical digests.
 
+pub mod persist;
+pub use persist::{ChainFileWriter, ChainReader, SystemSnapshot, unix_ms};
+
 use fsr_types::{ChainEvent, EventTag, Hash256, TemporalKey};
 use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};

@@ -14,6 +14,8 @@ members = [
     "crates/fsr-chain",
     "crates/fsr-governance",
     "crates/fsr-runtime",
+    "crates/fsr-tui",
+    "crates/fsr-ttcp",
 ]
 resolver = "2"
 
@@ -31,6 +33,12 @@ thiserror = "1"
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 rand = "0.8"
+bincode = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+notify = "6"
+crossbeam-channel = "0.5"
 
 [profile.release]
 opt-level = 3

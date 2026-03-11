@@ -7,6 +7,14 @@ edition.workspace = true
 name = "fsr"
 path = "src/main.rs"
 
+[features]
+# TUI dashboard (ratatui + crossterm)
+tui = ["dep:fsr-tui"]
+# Live market data via Binance WebSocket
+live-data = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util"]
+# Live order execution via Binance REST (implies live-data)
+live-exec = ["live-data", "dep:reqwest"]
+
 [dependencies]
 fsr-types = { path = "../fsr-types" }
 fsr-fixed = { path = "../fsr-fixed" }
@@ -21,9 +29,22 @@ fsr-hedge = { path = "../fsr-hedge" }
 fsr-calibration = { path = "../fsr-calibration" }
 fsr-chain = { path = "../fsr-chain" }
 fsr-governance = { path = "../fsr-governance" }
+fsr-ttcp = { path = "../fsr-ttcp" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 serde_json = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 rand = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+notify = { workspace = true }
+crossbeam-channel = { workspace = true }
+
+# Optional feature-gated dependencies
+fsr-tui = { path = "../fsr-tui", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
+tokio-tungstenite = { version = "0.21", optional = true }
+futures-util = { version = "0.3", optional = true }
+reqwest = { version = "0.11", features = ["json"], optional = true }

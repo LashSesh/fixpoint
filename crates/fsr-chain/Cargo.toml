@@ -9,3 +9,11 @@ fsr-fixed = { path = "../fsr-fixed" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+bincode = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+fsr-ttcp = { path = "../fsr-ttcp" }
+fsr-tui = { path = "../fsr-tui" }
+fsr-governance = { path = "../fsr-governance" }
+serde_json = { workspace = true }

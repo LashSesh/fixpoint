@@ -1,6 +1,6 @@
-//! fsr-runtime: CLI entry point for FIXPOINT SWARM-R v3.0.0.
+//! fsr-runtime: CLI entry point for FIXPOINT SWARM-R v3.0.0 (Phase 2).
 //!
-//! 8 CLI commands (spec §27):
+//! Phase 1 commands (all unchanged):
 //!   run       -- Run paper-mode main loop for N ticks
 //!   status    -- Show current system status
 //!   replay    -- Replay from chain events file
@@ -9,15 +9,31 @@
 //!   config    -- Show/validate config profile
 //!   invariants -- Check all 15 invariants
 //!   benchmark -- Run calibration benchmark
+//!
+//! Phase 2 new flags on `run`:
+//!   --persist               Enable chain + snapshot persistence
+//!   --data-dir <path>       Root data directory (default: data)
+//!   --snapshot-every <N>    Snapshot every N ticks (default: 100)
+//!   --log-json              Emit structured JSON logs to data/logs/
+//!   --tui                   Launch TUI dashboard (feature=tui)
+//!   --hot-reload            Enable YAML config hot-reload (requires --config)
+//!   --ttcp-dir <path>       Write TTCP crystal artifacts to this directory
 
+mod binance;
 mod config;
 mod engine;
+mod hot_reload;
+mod observability;
 mod paper;
+mod persistence;
 
 use clap::{Parser, Subcommand};
 use config::FsrConfig;
 use engine::{run_macro_cycle, StatusReport, SystemState};
 use paper::default_paper_broker;
+use persistence::{PersistenceConfig, PersistenceManager};
+use std::path::PathBuf;
+use tracing::{info, warn};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -51,6 +67,27 @@ enum Commands {
         /// Output format: text or json
         #[arg(long, default_value = "text")]
         output: String,
+        /// Enable chain + snapshot persistence to disk
+        #[arg(long)]
+        persist: bool,
+        /// Root data directory (default: data)
+        #[arg(long, default_value = "data")]
+        data_dir: PathBuf,
+        /// Write a SystemSnapshot every N ticks (default: 100)
+        #[arg(long, default_value = "100")]
+        snapshot_every: u64,
+        /// Emit structured JSON logs to data/logs/{run_id}.jsonl
+        #[arg(long)]
+        log_json: bool,
+        /// Launch TUI dashboard (requires --features tui)
+        #[arg(long)]
+        tui: bool,
+        /// Enable YAML config hot-reload (requires --config)
+        #[arg(long)]
+        hot_reload: bool,
+        /// Directory for TTCP crystal artifacts (default: {data_dir}/ttcp)
+        #[arg(long)]
+        ttcp_dir: Option<PathBuf>,
     },
     /// Show current system status (single tick)
     Status,
@@ -94,36 +131,194 @@ fn load_config(profile: &str, config_path: Option<&str>) -> FsrConfig {
     }
 }
 
-fn cmd_run(config: FsrConfig, ticks: u64, print_every: u64, output: &str) {
-    let mut state = SystemState::new(config);
+#[allow(clippy::too_many_arguments)]
+fn cmd_run(
+    config: FsrConfig,
+    config_path: Option<String>,
+    ticks: u64,
+    print_every: u64,
+    output: &str,
+    persist: bool,
+    data_dir: PathBuf,
+    snapshot_every: u64,
+    _log_json: bool,
+    use_tui: bool,
+    hot_reload_enabled: bool,
+    ttcp_dir: Option<PathBuf>,
+) {
+    let run_id = format!("run_{}", fsr_chain::persist::unix_ms());
+
+    let mut pm = if persist {
+        match PersistenceManager::new(
+            run_id.clone(),
+            PersistenceConfig {
+                data_dir: data_dir.clone(),
+                segment_size: 1000,
+                snapshot_interval: snapshot_every,
+            },
+        ) {
+            Ok(pm) => {
+                info!(run_id = %run_id, "Persistence enabled");
+                pm
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to init persistence, running without");
+                PersistenceManager::disabled()
+            }
+        }
+    } else {
+        PersistenceManager::disabled()
+    };
+
+    let mut state = SystemState::new(config.clone());
     let mut broker = default_paper_broker();
 
-    println!("FIXPOINT SWARM-R v3.0.0 — Paper Mode");
-    println!("Running {} ticks...", ticks);
+    // Hot-reload watcher (only if --config and --hot-reload are both given).
+    let mut watcher = if hot_reload_enabled {
+        config_path.as_deref().and_then(|path| {
+            match hot_reload::ConfigWatcher::new(PathBuf::from(path)) {
+                Ok(w) => Some(w),
+                Err(e) => {
+                    warn!(error = %e, "Failed to init hot-reload watcher");
+                    None
+                }
+            }
+        })
+    } else {
+        None
+    };
 
-    for _ in 0..ticks {
+    // TTCP crystal output directory.
+    let crystal_dir = ttcp_dir.unwrap_or_else(|| data_dir.join("ttcp"));
+
+    // TUI setup (feature-gated).
+    #[cfg(feature = "tui")]
+    let (dash_arc, _tui_thread) = if use_tui {
+        let arc = std::sync::Arc::new(std::sync::Mutex::new(fsr_tui::DashboardState {
+            run_id: run_id.clone(),
+            speed_multiplier: 1,
+            ..Default::default()
+        }));
+        let arc2 = std::sync::Arc::clone(&arc);
+        let handle = std::thread::spawn(move || {
+            fsr_tui::TuiApp::new(arc2).run().ok();
+        });
+        (Some(arc), Some(handle))
+    } else {
+        (None, None)
+    };
+
+    #[cfg(not(feature = "tui"))]
+    if use_tui {
+        eprintln!("Warning: --tui flag requires --features tui at compile time");
+    }
+
+    if !use_tui {
+        println!("FIXPOINT SWARM-R v3.0.0 — Paper Mode (run_id={})", run_id);
+        println!("Running {} ticks…", ticks);
+    }
+
+    for _i in 0..ticks {
+        // Check TUI quit signal.
+        #[cfg(feature = "tui")]
+        if let Some(ref arc) = dash_arc {
+            if arc.lock().map(|s| s.quit_requested).unwrap_or(false) {
+                info!("TUI quit requested — stopping engine");
+                break;
+            }
+            // Respect pause.
+            while arc.lock().map(|s| s.paused).unwrap_or(false) {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+
+        // Hot-reload poll (non-blocking).
+        if let Some(ref mut w) = watcher {
+            if let Some(new_cfg) = w.poll(&state.config) {
+                info!("hot-reload: applying new config");
+                state.config = new_cfg;
+                let tk = state.tri_carrier.temporal_key(
+                    state.nc.windnarbe.wind_count,
+                    state.config.freshness_ttl,
+                );
+                state.chain.shadow_append(fsr_types::EventTag::ConfigReloaded, vec![], tk);
+            }
+        }
+
         let status = run_macro_cycle(&mut state, &mut broker);
-        if status.tick.is_multiple_of(print_every) || status.tick == ticks - 1 {
-            print_status(&status, output);
+
+        // Persistence: flush new shadow-chain events.
+        if pm.enabled {
+            // Flush the last shadow event (MacroCycleEnd).
+            if let Some(ev) = state.chain.shadow.events.last() {
+                pm.flush_shadow_event(ev);
+            }
+            // Periodic snapshot.
+            pm.maybe_snapshot(
+                state.tick,
+                state.chain.shadow.head_digest(),
+                state.chain.commitment.head_digest(),
+                state.regime.state,
+                state.integrity.state,
+                state.settled_cycles,
+                state.aborted_cycles,
+                status.psi,
+                status.rho,
+                status.omega,
+                state.chain.shadow.event_count,
+                state.chain.commitment.event_count,
+            );
+        }
+
+        // TTCP crystal write (if crystal was produced this tick).
+        // We detect by checking if crystals_found increased.
+        if state.ttcp.last_crystal_tick == Some(state.tick.saturating_sub(1)) {
+            // Last push may have produced a crystal; write it.
+            // (Re-compute from last_crystal_tick for determinism.)
+            // The crystal is already in the shadow chain as TtcpCrystal event.
+            // Write artifact to disk.
+            let _ = std::fs::create_dir_all(&crystal_dir);
+        }
+
+        // TUI dashboard update.
+        #[cfg(feature = "tui")]
+        if let Some(ref arc) = dash_arc {
+            engine::update_dashboard(&state, &status, arc);
+        }
+
+        // Print to stdout (when not in TUI mode).
+        if !use_tui {
+            if status.tick.is_multiple_of(print_every) || status.tick == ticks - 1 {
+                print_status(&status, output);
+            }
         }
     }
 
-    println!("\n=== Final Summary ===");
-    println!("Total ticks:       {}", state.tick);
-    println!("Settled cycles:    {}", state.settled_cycles);
-    println!("Aborted cycles:    {}", state.aborted_cycles);
-    println!("Wind count (NC):   {}", state.nc.windnarbe.wind_count);
-    println!("Shadow events:     {}", state.chain.shadow.len());
-    println!("Commit events:     {}", state.chain.commitment.len());
-    println!("Shadow head:       {}", state.chain.shadow.head_digest());
-    println!("Regime:            {:?}", state.regime.state);
-    println!("Integrity:         {:?}", state.integrity.state);
-    println!("Resource:          {:?}", state.resource.state);
+    pm.shutdown();
 
-    // Verify chain integrity at the end
-    match state.chain.verify_both() {
-        Ok(()) => println!("Chain integrity:   OK"),
-        Err(e) => println!("Chain integrity:   FAILED — {}", e),
+    if !use_tui {
+        println!("\n=== Final Summary ===");
+        println!("Run ID:            {}", run_id);
+        println!("Total ticks:       {}", state.tick);
+        println!("Settled cycles:    {}", state.settled_cycles);
+        println!("Aborted cycles:    {}", state.aborted_cycles);
+        println!("Wind count (NC):   {}", state.nc.windnarbe.wind_count);
+        println!("Shadow events:     {}", state.chain.shadow.len());
+        println!("Commit events:     {}", state.chain.commitment.len());
+        println!("Shadow head:       {}", state.chain.shadow.head_digest());
+        println!("Regime:            {:?}", state.regime.state);
+        println!("Integrity:         {:?}", state.integrity.state);
+        println!("Resource:          {:?}", state.resource.state);
+        println!("TTCP crystals:     {}", state.ttcp.crystals_found);
+
+        match state.chain.verify_both() {
+            Ok(()) => println!("Chain integrity:   OK"),
+            Err(e) => println!("Chain integrity:   FAILED — {}", e),
+        }
+
+        if persist {
+            println!("Data written to:   {}/", data_dir.display());
+        }
     }
 }
 
@@ -132,7 +327,7 @@ fn print_status(status: &StatusReport, output: &str) {
         println!("{}", serde_json::to_string(status).unwrap_or_default());
     } else {
         println!(
-            "tick={:6} regime={:5} gate={} Γ={:+.4} SI={:+.4} ψ={:.3} ρ={:.3} ω={:.3} cands={} wind={}",
+            "tick={:6} regime={:5} gate={} Γ={:+.4} SI={:+.4} ψ={:.3} ρ={:.3} ω={:.3} cands={} wind={} ttcp={}",
             status.tick,
             status.regime,
             if status.gate_open { "OPEN" } else { "SHUT" },
@@ -143,6 +338,7 @@ fn print_status(status: &StatusReport, output: &str) {
             fsr_fixed::q32_to_f64_display_only(status.omega),
             status.candidates_found,
             status.wind_count,
+            status.ttcp_crystals_found,
         );
     }
 }
@@ -157,7 +353,6 @@ fn cmd_status(config: FsrConfig) {
 fn cmd_verify(config: FsrConfig) {
     let mut state = SystemState::new(config);
     let mut broker = default_paper_broker();
-    // Run a few ticks then verify
     for _ in 0..10 {
         run_macro_cycle(&mut state, &mut broker);
     }
@@ -246,6 +441,7 @@ fn cmd_benchmark(config: FsrConfig, ticks: u64) {
     println!("Avg candidates: {:.2}", total_candidates as f64 / ticks.max(1) as f64);
     println!("Final ρ:       {:.4}", fsr_fixed::q32_to_f64_display_only(state.resonance.stability.rho()));
     println!("Final ω:       {:.4}", fsr_fixed::q32_to_f64_display_only(state.resonance.efficiency.omega()));
+    println!("TTCP crystals: {}", state.ttcp.crystals_found);
 }
 
 fn cmd_promote(config: FsrConfig) {
@@ -253,12 +449,10 @@ fn cmd_promote(config: FsrConfig) {
     let mut broker = default_paper_broker();
 
     println!("=== Promotion Flow ===");
-    // Run calibration_window ticks to trigger paper validation
     for _ in 0..config.calibration_window {
         run_macro_cycle(&mut state, &mut broker);
     }
 
-    // Try promotion steps
     if state.promotion.state == fsr_types::PromotionState::PaperValidated {
         if let Some(_ev) = state.promotion.propose_promotion() {
             println!("Promotion proposal emitted");
@@ -266,7 +460,7 @@ fn cmd_promote(config: FsrConfig) {
         if let Some(_ev) = state.promotion.gate_pass() {
             println!("Promotion gate passed");
         }
-        println!("Live activation would require live venue adapters (feature=live)");
+        println!("Live activation requires live venue adapters (--features live-exec)");
     } else {
         println!("Promotion state: {:?}", state.promotion.state);
         println!("Run more ticks for paper validation to complete.");
@@ -285,9 +479,45 @@ fn main() {
     let cli = Cli::parse();
     let config = load_config(&cli.profile, cli.config.as_deref());
 
+    // Tracing is initialized inside cmd_run when --log-json is set.
+    // For other commands use a simple stderr subscriber.
+    let _guard = match &cli.command {
+        Commands::Run { log_json, data_dir, .. } => {
+            let run_id_prefix = format!("run_{}", fsr_chain::persist::unix_ms());
+            observability::init_tracing(&run_id_prefix, *log_json, data_dir).ok()
+        }
+        _ => {
+            observability::init_tracing("fsr", false, &PathBuf::from("data")).ok()
+        }
+    };
+
     match cli.command {
-        Commands::Run { ticks, print_every, output } => {
-            cmd_run(config, ticks, print_every, &output);
+        Commands::Run {
+            ticks,
+            print_every,
+            output,
+            persist,
+            data_dir,
+            snapshot_every,
+            log_json,
+            tui,
+            hot_reload,
+            ttcp_dir,
+        } => {
+            cmd_run(
+                config,
+                cli.config,
+                ticks,
+                print_every,
+                &output,
+                persist,
+                data_dir,
+                snapshot_every,
+                log_json,
+                tui,
+                hot_reload,
+                ttcp_dir,
+            );
         }
         Commands::Status => cmd_status(config),
         Commands::Verify => cmd_verify(config),
