@@ -1,0 +1,9 @@
+[package]
+name = "fsr-hedge"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+serde = { workspace = true }

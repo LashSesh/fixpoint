@@ -1,0 +1,11 @@
+[package]
+name = "fsr-chain"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
