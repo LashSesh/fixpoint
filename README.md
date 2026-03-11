@@ -1,6 +1,6 @@
 # LeveRAGE (AinSoft-R: Finance)
 
-**Deterministisches Rust-Handelssystem mit DSHAE-Arbitrage-Engine und Desktop-GUI**
+**Deterministisches Rust-Handelssystem mit Phasensynchronisation, DSHAE-Arbitrage-Engine zur holographischen Phasenraumprojektion und Desktop-GUI**
 
 ---
 
