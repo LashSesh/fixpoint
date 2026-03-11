@@ -1,0 +1,24 @@
+[package]
+name = "fsr-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fsr-gui"
+path = "src/main.rs"
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+fsr-dshae = { path = "../fsr-dshae" }
+fsr-resonance = { path = "../fsr-resonance" }
+fsr-ttcp = { path = "../fsr-ttcp" }
+egui.workspace = true
+eframe.workspace = true
+egui_plot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+anyhow.workspace = true
+clap.workspace = true

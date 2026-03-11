@@ -16,6 +16,7 @@
 //!   • update_dashboard fills Phase 3 state fields
 
 use crate::config::FsrConfig;
+use crate::dshae_bridge::DshaeBridge;
 use crate::paper::PaperBroker;
 use crate::sniper::SniperMode;
 use fsr_calibration::PromotionFsm;
@@ -63,6 +64,9 @@ pub struct SystemState {
 
     // Phase 3: Sniper mode
     pub sniper: SniperMode,
+
+    // Phase 4: DSHAE bridge
+    pub dshae: DshaeBridge,
 }
 
 impl SystemState {
@@ -97,6 +101,7 @@ impl SystemState {
             current_drawdown: 0,
             ttcp,
             sniper: SniperMode::default(),
+            dshae: DshaeBridge::default(),
         }
     }
 }
@@ -380,6 +385,12 @@ pub fn run_macro_cycle_with_books(state: &mut SystemState, books: Vec<OrderBook>
         if state.sniper.is_active() {
             state.chain.shadow_append(EventTag::SniperArmed, vec![], tk);
         }
+    }
+
+    // ── Phase 4: DSHAE tick ──────────────────────────────────────────────────
+    let dshae_crystals = state.dshae.tick(&books, state.tick);
+    for _crystal in &dshae_crystals {
+        state.chain.shadow_append(EventTag::DshaeCrystalFormed, vec![], tk);
     }
 
     // ── Step 16: CALIBRATE ───────────────────────────────────────────────────
