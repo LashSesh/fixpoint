@@ -76,8 +76,10 @@ impl TuiApp {
 
                 // Title bar.
                 let title = ratatui::widgets::Paragraph::new(format!(
-                    " FIXPOINT SWARM-R v3.0.0 — Phase 2 Dashboard  tick={}  run={}",
-                    state.tick, state.run_id
+                    " FIXPOINT SWARM-R v3.1.0 — {}  tick={}  run={}",
+                    if state.mode.is_empty() { "paper".to_string() } else { state.mode.clone() },
+                    state.tick,
+                    state.run_id,
                 ))
                 .style(
                     ratatui::style::Style::default()
@@ -93,10 +95,8 @@ impl TuiApp {
             // Poll for key events (16 ms ≈ 60 fps refresh).
             if event::poll(Duration::from_millis(16))? {
                 if let Event::Key(key) = event::read()? {
-                    if key.kind == KeyEventKind::Press {
-                        if self.handle_key(key.code) {
-                            return Ok(());
-                        }
+                    if key.kind == KeyEventKind::Press && self.handle_key(key.code) {
+                        return Ok(());
                     }
                 }
             }
@@ -130,6 +130,11 @@ impl TuiApp {
             KeyCode::Esc => {
                 state.quit_requested = true;
                 true
+            }
+            // Phase 3: 's' toggles sniper mode (requires confirmation in engine loop)
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                state.sniper_toggle_requested = true;
+                false
             }
             _ => false,
         }

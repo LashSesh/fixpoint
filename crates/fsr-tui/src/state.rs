@@ -22,6 +22,53 @@ pub struct TtcpStatus {
     pub last_crystal_tick: Option<u64>,
     /// Most recent crystal (for display).
     pub last_crystal: Option<TtcpCrystal>,
+    /// Average delta1 (Q32)
+    pub avg_delta1: Q32,
+    /// Average delta2 (Q32)
+    pub avg_delta2: Q32,
+    /// Average delta3 (Q32)
+    pub avg_delta3: Q32,
+    /// Crystal validity countdown
+    pub crystal_validity_remaining: u64,
+}
+
+/// Sniper mode status for TUI display.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SniperStatus {
+    pub enabled: bool,
+    /// Display string: "DISABLED", "OBSERVING", "ARMED scale=0.31", "COOLDOWN (N ticks)"
+    pub status_line: String,
+    pub scale_factor: Q32,
+    pub total_executions: u64,
+    pub cooldown_remaining: u64,
+    pub state_name: String,
+}
+
+/// Risk and P&L metrics for panel 4.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct RiskStatus {
+    /// Net P&L in basis points (Q32)
+    pub net_pnl_bps: Q32,
+    /// Current drawdown (Q32 bps)
+    pub drawdown_bps: Q32,
+    /// Max allowed drawdown (Q32 bps)
+    pub max_drawdown_limit_bps: Q32,
+    /// Current leverage (Q32 ratio)
+    pub leverage: Q32,
+    /// Max allowed leverage (Q32)
+    pub max_leverage: Q32,
+    /// Risk budget consumed (0..1 as Q32)
+    pub risk_budget_fraction: Q32,
+    /// Daily loss consumed (Q32 bps, positive = loss)
+    pub daily_loss_bps: Q32,
+    /// Daily loss limit (Q32 bps)
+    pub daily_loss_limit_bps: Q32,
+    /// True if daily loss limit hit (auto-pause)
+    pub daily_limit_hit: bool,
+    /// Inventory summary string e.g. "BTC+.003 ETH-.012"
+    pub inventory_summary: String,
+    /// Exposure in Q32 basis points
+    pub exposure_bps: Q32,
 }
 
 /// Complete dashboard state: one snapshot per tick, cloned into TUI thread.
@@ -30,6 +77,8 @@ pub struct DashboardState {
     // ── Tick / identity ────────────────────────────────────────────────────
     pub tick: u64,
     pub run_id: String,
+    /// Mode: "paper", "live", "replay", "live|sniper"
+    pub mode: String,
 
     // ── FSM states ─────────────────────────────────────────────────────────
     pub regime: String,
@@ -67,6 +116,24 @@ pub struct DashboardState {
     // ── TTCP ───────────────────────────────────────────────────────────────
     pub ttcp: TtcpStatus,
 
+    // ── Phase 3: Sniper ────────────────────────────────────────────────────
+    pub sniper: SniperStatus,
+
+    // ── Phase 3: Risk Dashboard ────────────────────────────────────────────
+    pub risk: RiskStatus,
+
+    // ── Phase 3: Multi-venue counts ────────────────────────────────────────
+    /// Binance L1 (single-venue) candidate count
+    pub binance_l1_count: usize,
+    /// Binance L2 candidate count
+    pub binance_l2_count: usize,
+    /// Kraken L1 candidate count
+    pub kraken_l1_count: usize,
+    /// Kraken L2 candidate count
+    pub kraken_l2_count: usize,
+    /// Cross-venue candidate count
+    pub cross_venue_count: usize,
+
     // ── Control ────────────────────────────────────────────────────────────
     /// If true, the engine pauses between ticks (set by 'p' key, cleared by 'r').
     pub paused: bool,
@@ -74,6 +141,8 @@ pub struct DashboardState {
     pub speed_multiplier: u32,
     /// If true, the TUI has been asked to quit (set by 'q' key).
     pub quit_requested: bool,
+    /// If true, sniper toggle was requested (set by 's' key).
+    pub sniper_toggle_requested: bool,
 }
 
 impl DashboardState {

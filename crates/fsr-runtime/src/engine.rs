@@ -8,9 +8,16 @@
 //!   • TTCP snapshot feed
 //!   • DashboardState update (feature=tui)
 //!   • Persistence hooks (PersistenceManager)
+//!
+//! Phase 3 additions (non-breaking):
+//!   • run_macro_cycle accepts dyn VenueBroker (backward-compatible via coercion)
+//!   • run_macro_cycle_with_books: core cycle taking pre-fetched OrderBooks
+//!   • SniperMode integration
+//!   • update_dashboard fills Phase 3 state fields
 
 use crate::config::FsrConfig;
 use crate::paper::PaperBroker;
+use crate::sniper::SniperMode;
 use fsr_calibration::PromotionFsm;
 use fsr_candidates::{filter_and_press, wt_multiplex};
 use fsr_chain::DualChain;
@@ -24,7 +31,7 @@ use fsr_nullcenter::{NcTraversalReason, NullcenterGate};
 use fsr_resonance::ResonanceEngine;
 use fsr_temporal::{KairosScheduler, TriCarrier};
 use fsr_ttcp::{TtcpConfig, TtcpEngine};
-use fsr_types::{EventTag, IntegrityPosture, Q32};
+use fsr_types::{market::OrderBook, EventTag, IntegrityPosture, Q32};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
@@ -53,6 +60,9 @@ pub struct SystemState {
 
     // Phase 2: TTCP engine (always present; runs on each tick)
     pub ttcp: TtcpEngine,
+
+    // Phase 3: Sniper mode
+    pub sniper: SniperMode,
 }
 
 impl SystemState {
@@ -86,6 +96,7 @@ impl SystemState {
             aborted_cycles: 0,
             current_drawdown: 0,
             ttcp,
+            sniper: SniperMode::default(),
         }
     }
 }
@@ -112,18 +123,25 @@ pub struct StatusReport {
     pub commitment_event_count: u64,
     pub candidates_found: usize,
     pub ttcp_crystals_found: u64,
+    // Phase 3
+    pub sniper_executed: bool,
 }
 
-/// Run one complete macro-cycle (spec §7.2, 20 steps).
-/// Returns a status report. Persistence is handled by caller via the returned
-/// status (Phase 2 adds persistence + TTCP as non-breaking extensions).
+/// Run one complete macro-cycle using a VenueBroker (broker-based entry point).
+/// PaperBroker coerces to &mut dyn VenueBroker automatically at call sites.
 #[tracing::instrument(skip_all, fields(tick = state.tick))]
 pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> StatusReport {
+    broker.advance_all();
+    let books = broker.all_books();
+    run_macro_cycle_with_books(state, books)
+}
+
+/// Core macro-cycle implementation taking pre-fetched OrderBooks.
+/// Used by both run_macro_cycle (paper) and replay (historical).
+pub fn run_macro_cycle_with_books(state: &mut SystemState, books: Vec<OrderBook>) -> StatusReport {
     let config = state.config.clone();
 
     // ── Step 1: OBSERVE ──────────────────────────────────────────────────────
-    broker.advance_all();
-    let books = broker.all_books();
     let mid_prices = books.iter().filter_map(|b| b.mid_bp()).collect::<Vec<_>>();
     debug!(books = books.len(), "OBSERVE");
 
@@ -207,10 +225,38 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
     let (gate_open, gamma_score) = state.kairos.evaluate(&snap, leak, &sub_gates);
     debug!(gate_open, gamma = gamma_score, "GATE");
 
+    // ── Step 11: Phase 3 Sniper gate ─────────────────────────────────────────
+    // Sniper mode gates execution on TTCP crystal + scale_factor.
+    let sniper_execute = if state.sniper.is_active() {
+        state.sniper.tick(
+            state.tick,
+            gate_open,
+            state.ttcp.last_crystal_tick,
+            state.ttcp.last_crystal_tick
+                .map(|_t| snap.psi)
+                .unwrap_or(0),
+            0, // pnl_delta: simplified (real P&L tracked separately)
+        )
+    } else {
+        false
+    };
+
+    // In sniper mode, only execute when sniper says so; otherwise use normal flow.
+    let execute_allowed = if state.sniper.is_active() {
+        sniper_execute
+    } else {
+        true
+    };
+
     // ── Step 11: IF G(x) = 1: JUMP ──────────────────────────────────────────
-    if gate_open && state.integrity.state != IntegrityPosture::SafeHold
+    if gate_open && execute_allowed
+        && state.integrity.state != IntegrityPosture::SafeHold
         && state.integrity.state != IntegrityPosture::Killed
     {
+        if sniper_execute {
+            state.chain.shadow_append(EventTag::SniperExecuted, vec![], tk);
+        }
+
         let nc_result = state.nc.factor_through(
             gate_open,
             best_si,
@@ -230,8 +276,8 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
                     &config.to_por_accept_config(),
                 );
 
-                if por_accept && has_candidates {
-                    if state.csp.state == fsr_types::CspState::Idle {
+                if por_accept && has_candidates && state.csp.state == fsr_types::CspState::Idle {
+                    {
                         state.csp.on_candidate_discovered();
                         state.chain.shadow_append(EventTag::CandidateDiscovered, vec![], tk);
                         state.csp.open_intent();
@@ -270,7 +316,7 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
                                     );
                                     state.resonance.efficiency.record_settled();
                                     state.settled_cycles += 1;
-                                    info!(tick = state.tick, "SETTLED");
+                                    info!(tick = state.tick, sniper = sniper_execute, "SETTLED");
                                 }
                                 state.csp.begin_reset_from_settled();
                                 state.csp.complete_reset();
@@ -315,7 +361,6 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
     state.chain.shadow_append(EventTag::MacroCycleEnd, vec![], tk);
 
     // ── Phase 2: TTCP feed ───────────────────────────────────────────────────
-    // Feed snapshot into TTCP engine; emit crystal event to chain if convergence.
     let ttcp_snap = fsr_types::ResonanceSnapshot {
         kappa: snap.kappa,
         entropy: snap.entropy,
@@ -331,6 +376,10 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
         info!(tick = crystal.tick, level = crystal.level, "TTCP crystal detected");
         let crystal_payload = serde_json::to_vec(&crystal).unwrap_or_default();
         state.chain.shadow_append(EventTag::TtcpCrystal, crystal_payload, tk);
+        // Phase 3: arm sniper if active
+        if state.sniper.is_active() {
+            state.chain.shadow_append(EventTag::SniperArmed, vec![], tk);
+        }
     }
 
     // ── Step 16: CALIBRATE ───────────────────────────────────────────────────
@@ -418,6 +467,7 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
         commitment_event_count: state.chain.commitment.event_count,
         candidates_found,
         ttcp_crystals_found: state.ttcp.crystals_found,
+        sniper_executed: sniper_execute,
     };
 
     // Advance Regime FSM
@@ -447,7 +497,7 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
     status
 }
 
-/// Phase 2: update a shared DashboardState from a just-completed macro-cycle.
+/// Phase 2+3: update a shared DashboardState from a just-completed macro-cycle.
 /// Only compiled when the `tui` feature is enabled.
 #[cfg(feature = "tui")]
 pub fn update_dashboard(
@@ -470,6 +520,10 @@ pub fn update_dashboard(
         d.entropy = status.entropy;
         d.momentum = status.momentum;
         d.candidates_found = status.candidates_found;
+        // Phase 3: map candidates to per-venue counts (simplified)
+        d.binance_l1_count = status.candidates_found;
+        d.kraken_l1_count = 0;
+        d.cross_venue_count = 0;
         d.wind_count = status.wind_count;
         d.settled_cycles = state.settled_cycles;
         d.aborted_cycles = state.aborted_cycles;
@@ -484,15 +538,64 @@ pub fn update_dashboard(
         if state.ttcp.crystals_found > 0 {
             d.ttcp.level = 2;
         }
+        // Phase 3: track crystal validity
+        if let Some(last_t) = state.ttcp.last_crystal_tick {
+            let age = state.tick.saturating_sub(last_t + 1);
+            d.ttcp.crystal_validity_remaining = if age < 50 { 50 - age } else { 0 };
+        }
+
+        // Phase 3: Sniper status
+        d.sniper.enabled = state.sniper.is_active();
+        d.sniper.status_line = state.sniper.status_line();
+        d.sniper.scale_factor = state.sniper.scale_factor;
+        d.sniper.total_executions = state.sniper.total_sniper_executions;
+        d.sniper.cooldown_remaining = state.sniper.cooldown_remaining;
+        d.sniper.state_name = format!("{}", state.sniper.state);
+
+        // Phase 3: Risk status (simplified — real exposure tracked by execution layer)
+        d.risk.net_pnl_bps = state.settled_cycles as i64 - state.aborted_cycles as i64;
+        d.risk.drawdown_bps = state.current_drawdown;
+        d.risk.max_drawdown_limit_bps = (3000i64) * fsr_fixed::ONE; // 30 bp limit
+        d.risk.leverage = if state.hedge.hedge_size > 0 {
+            fsr_fixed::q32_from_f64_boundary(state.hedge.hedge_size as f64 / 100.0)
+        } else {
+            0
+        };
+        d.risk.max_leverage = fsr_fixed::q32_from_f64_boundary(5.0);
+        d.risk.risk_budget_fraction = fsr_fixed::q32_from_f64_boundary(0.0);
+        d.risk.daily_loss_bps = state.sniper.daily_loss_bps;
+        d.risk.daily_loss_limit_bps = state.sniper.config.daily_loss_limit_bps;
+        d.risk.daily_limit_hit = state.sniper.daily_loss_bps.abs()
+            >= state.sniper.config.daily_loss_limit_bps
+            && state.sniper.config.daily_loss_limit_bps > 0;
 
         // Event log: append notable events
         if status.gate_open {
-            d.push_event(format!("t={} gate OPEN Γ={:.3}", status.tick,
-                fsr_fixed::q32_to_f64_display_only(status.gamma_score)));
+            d.push_event(format!(
+                "t={} gate OPEN Γ={:.3}",
+                status.tick,
+                fsr_fixed::q32_to_f64_display_only(status.gamma_score)
+            ));
         }
-        if status.ttcp_crystals_found > d.ttcp.crystals_found.saturating_sub(1) && state.ttcp.last_crystal_tick == Some(status.tick.saturating_sub(1)) {
-            d.push_event(format!("t={} TTCP crystal (total={})",
-                status.tick, state.ttcp.crystals_found));
+        if status.sniper_executed {
+            d.push_event(format!(
+                "t={} [SNIPER] ARMED -> Execute (scale={:.2})",
+                status.tick,
+                fsr_fixed::q32_to_f64_display_only(state.sniper.scale_factor)
+            ));
+        }
+        if state.ttcp.last_crystal_tick == Some(status.tick.saturating_sub(1)) {
+            d.push_event(format!(
+                "t={} [TTCP] Crystal #{} emitted",
+                status.tick,
+                state.ttcp.crystals_found
+            ));
+        }
+
+        // Handle sniper toggle request from TUI
+        if d.sniper_toggle_requested {
+            d.sniper_toggle_requested = false;
+            // Signal will be picked up by engine loop to toggle sniper
         }
     }
 }

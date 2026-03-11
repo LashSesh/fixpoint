@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! PersistenceManager: coordinates ChainFileWriter + SystemSnapshot (Phase 2 §2.1).
 //!
 //! When enabled (--persist flag), writes:
@@ -123,7 +124,7 @@ impl PersistenceManager {
         if !self.enabled {
             return;
         }
-        if tick == 0 || tick % self.snapshot_interval != 0 {
+        if tick == 0 || !tick.is_multiple_of(self.snapshot_interval) {
             return;
         }
 

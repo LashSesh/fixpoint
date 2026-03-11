@@ -3,6 +3,15 @@
 //! Double-kick: T = ΦV ∘ ΦU where ΦU improves ψ, ΦV improves ρ and ω.
 //! Promotion FSM: Candidate → PaperValidated → PromotionPending → LiveEligible → LiveActive.
 //! INV-05: no live promotion without paper validation and promotion gate passage.
+//!
+//! Phase 3 additions:
+//!   - promotion_workflow: 5-gate pipeline CLI integration
+
+pub mod promotion_workflow;
+pub use promotion_workflow::{
+    GateCheckResult, PromotionGateConfig, PromotionProposal, PromotionWorkflow,
+    run_gate_checks,
+};
 
 use fsr_types::{EventTag, PromotionState, Q32};
 use serde::{Deserialize, Serialize};
