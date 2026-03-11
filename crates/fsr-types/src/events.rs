@@ -74,6 +74,14 @@ pub enum EventTag {
     RiskLimitBreached,
     ReplayStarted,
     ReplayCompleted,
+    // Phase 4 additions (additive only — do not remove or reorder above variants)
+    DshaeCrystalFormed,
+    DshaeHimUpdated,
+    DshaeSandboxPass,
+    DshaeSandboxFail,
+    DshaeBasketRebalanced,
+    GuiSessionStarted,
+    GuiSessionEnded,
 }
 
 /// A hash-chained evidence event (spec §18).

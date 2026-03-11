@@ -1,0 +1,17 @@
+[package]
+name = "fsr-dshae"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+bincode.workspace = true
+rand.workspace = true
+
+[build-dependencies]
+# build.rs generates sandbox fixtures — only std needed

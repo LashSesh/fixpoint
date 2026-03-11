@@ -23,6 +23,7 @@
 mod backtest_report;
 mod binance;
 mod config;
+mod dshae_bridge;
 mod engine;
 mod hot_reload;
 mod kraken;
@@ -179,6 +180,18 @@ enum Commands {
     Runs {
         #[arg(long, default_value = "10")]
         last: usize,
+    },
+    /// Launch the Phase 4 desktop GUI (Phase 4)
+    Gui {
+        /// Open in sandbox validation mode
+        #[arg(long)]
+        sandbox: bool,
+        /// Window width
+        #[arg(long, default_value = "1280")]
+        width: u32,
+        /// Window height
+        #[arg(long, default_value = "800")]
+        height: u32,
     },
 }
 
@@ -802,6 +815,46 @@ fn cmd_backtest_report(run: &str, data_dir: &Path) {
     }
 }
 
+/// Phase 4: `fsr gui` — launch the desktop GUI via fsr-gui binary.
+fn cmd_gui(config_path: Option<&str>, profile: &str, sandbox: bool, width: u32, height: u32) {
+    // Find fsr-gui binary relative to current executable.
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    let gui_bin = exe_dir.join("fsr-gui");
+
+    if !gui_bin.exists() {
+        eprintln!("fsr-gui binary not found at: {}", gui_bin.display());
+        eprintln!("Build with: cargo build --bin fsr-gui");
+        std::process::exit(1);
+    }
+
+    let mut cmd = std::process::Command::new(&gui_bin);
+    cmd.arg("--profile").arg(profile);
+    cmd.arg("--width").arg(width.to_string());
+    cmd.arg("--height").arg(height.to_string());
+    if sandbox {
+        cmd.arg("--sandbox");
+    }
+    if let Some(path) = config_path {
+        cmd.arg("--config").arg(path);
+    }
+
+    match cmd.status() {
+        Ok(status) => {
+            if !status.success() {
+                std::process::exit(status.code().unwrap_or(1));
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to launch fsr-gui: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let config = load_config(&cli.profile, cli.config.as_deref());
@@ -859,6 +912,9 @@ fn main() {
         }
         Commands::Runs { last } => {
             println!("Recent runs (last {}): (feature not yet implemented)", last);
+        }
+        Commands::Gui { sandbox, width, height } => {
+            cmd_gui(cli.config.as_deref(), &cli.profile, sandbox, width, height);
         }
     }
 }
