@@ -56,6 +56,10 @@ pub enum EventTag {
     MacroCycleStart,
     MacroCycleEnd,
     StatusReport,
+    // Phase 2 additions (additive only — do not remove or reorder above variants)
+    SnapshotWritten,
+    ConfigReloaded,
+    TtcpCrystal,
 }
 
 /// A hash-chained evidence event (spec §18).

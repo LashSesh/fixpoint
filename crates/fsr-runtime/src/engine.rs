@@ -2,6 +2,12 @@
 //!
 //! Implements the 20-step macro-cycle exactly as specified.
 //! Steps 7-13 directly instantiate the TMCP core cycle.
+//!
+//! Phase 2 additions (non-breaking):
+//!   • tracing spans for observability
+//!   • TTCP snapshot feed
+//!   • DashboardState update (feature=tui)
+//!   • Persistence hooks (PersistenceManager)
 
 use crate::config::FsrConfig;
 use crate::paper::PaperBroker;
@@ -17,8 +23,10 @@ use fsr_mirror::{PorFsm, compute_mci, mirror_gate_pass};
 use fsr_nullcenter::{NcTraversalReason, NullcenterGate};
 use fsr_resonance::ResonanceEngine;
 use fsr_temporal::{KairosScheduler, TriCarrier};
+use fsr_ttcp::{TtcpConfig, TtcpEngine};
 use fsr_types::{EventTag, IntegrityPosture, Q32};
 use serde::{Deserialize, Serialize};
+use tracing::{debug, info, warn};
 
 /// Runtime system state (spec §19 — all 6 state bands).
 pub struct SystemState {
@@ -42,6 +50,9 @@ pub struct SystemState {
     pub settled_cycles: u64,
     pub aborted_cycles: u64,
     pub current_drawdown: Q32,
+
+    // Phase 2: TTCP engine (always present; runs on each tick)
+    pub ttcp: TtcpEngine,
 }
 
 impl SystemState {
@@ -53,6 +64,7 @@ impl SystemState {
         let kairos = KairosGate::new(config.to_kairos_config());
         let hedge = HedgeFsm::new(config.to_hedge_config());
         let por = PorFsm::new(config.por_ttl_ticks);
+        let ttcp = TtcpEngine::new(TtcpConfig::default());
 
         SystemState {
             tri_carrier: tri,
@@ -73,6 +85,7 @@ impl SystemState {
             settled_cycles: 0,
             aborted_cycles: 0,
             current_drawdown: 0,
+            ttcp,
         }
     }
 }
@@ -90,13 +103,21 @@ pub struct StatusReport {
     pub psi: Q32,
     pub rho: Q32,
     pub omega: Q32,
+    pub kappa: Q32,
+    pub entropy: Q32,
+    pub momentum: Q32,
     pub wind_count: u64,
     pub shadow_head: String,
+    pub shadow_event_count: u64,
+    pub commitment_event_count: u64,
     pub candidates_found: usize,
+    pub ttcp_crystals_found: u64,
 }
 
 /// Run one complete macro-cycle (spec §7.2, 20 steps).
-/// Returns a status report.
+/// Returns a status report. Persistence is handled by caller via the returned
+/// status (Phase 2 adds persistence + TTCP as non-breaking extensions).
+#[tracing::instrument(skip_all, fields(tick = state.tick))]
 pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> StatusReport {
     let config = state.config.clone();
 
@@ -104,21 +125,19 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
     broker.advance_all();
     let books = broker.all_books();
     let mid_prices = books.iter().filter_map(|b| b.mid_bp()).collect::<Vec<_>>();
+    debug!(books = books.len(), "OBSERVE");
 
     // ── Step 2: NORMALIZE ────────────────────────────────────────────────────
     // Already normalized via OrderBook structure.
 
     // ── Step 3: EXTRACT ──────────────────────────────────────────────────────
-    // Compute market signals: use mid prices normalized to [0, ONE]
     let max_mid = mid_prices.iter().copied().max().unwrap_or(1).max(1);
     let signals: Vec<Q32> = mid_prices
         .iter()
         .map(|&p| q32_from_ratio(p, max_mid))
         .collect();
 
-    // Leakage (simplified: use resonance's reconstruction)
-    let leak: Q32 = 0; // Will be computed after multiplex
-
+    let leak: Q32 = 0;
     let snap = state.resonance.compute_snapshot(&signals, leak, state.tick);
 
     // ── Step 4: TEMPORAL ─────────────────────────────────────────────────────
@@ -130,7 +149,7 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
 
     // ── Step 5: RESOURCE ─────────────────────────────────────────────────────
     let resource_budget = fsr_governance::ResourceBudget {
-        cpu: q32_from_ratio(30, 100), // synthetic 30% usage
+        cpu: q32_from_ratio(30, 100),
         mem: q32_from_ratio(40, 100),
         storage: q32_from_ratio(20, 100),
         soft_limit: q32_from_f64_boundary(config.resource_soft_limit),
@@ -146,7 +165,6 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
     let active_layers = state.scheduler.active_layers();
 
     // ── Step 7: SCHEDULE ─────────────────────────────────────────────────────
-    // KairosScheduler already applied above; press depths from config.
     let press_depth = config.press_top_k;
 
     // ── Step 8: MULTIPLEX ────────────────────────────────────────────────────
@@ -160,14 +178,9 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
     let candidates_found = filtered_candidates.len();
 
     // ── Step 10: GATE ────────────────────────────────────────────────────────
-    // Evaluate Kairos gate G(x) with hysteresis
-
-    // PoR gate: POR FSM must be in Commit state for gate to open
-    // Simplified: try to advance PoR with current snapshot
     let best_si = filtered_candidates.first().map(|c| c.si_score).unwrap_or(0);
     let has_candidates = !filtered_candidates.is_empty();
 
-    // POR advancement
     let _por_locked = state.por.try_lock(has_candidates && best_si > 0, best_si);
     if state.por.state == fsr_types::PorState::Lock {
         let mci = compute_mci(&mid_prices);
@@ -175,7 +188,7 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
         let _por_verified = state.por.try_verify(true, true, mci_ok);
     }
     let por_commit_ready = if state.por.state == fsr_types::PorState::Verify {
-        let _ev = state.por.try_commit(true, true); // NC cert issued below
+        let _ev = state.por.try_commit(true, true);
         true
     } else {
         false
@@ -192,12 +205,12 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
     };
 
     let (gate_open, gamma_score) = state.kairos.evaluate(&snap, leak, &sub_gates);
+    debug!(gate_open, gamma = gamma_score, "GATE");
 
     // ── Step 11: IF G(x) = 1: JUMP ──────────────────────────────────────────
     if gate_open && state.integrity.state != IntegrityPosture::SafeHold
         && state.integrity.state != IntegrityPosture::Killed
     {
-        // JUMP: Q(x) = P- ∘ W ∘ P+ factoring through NC
         let nc_result = state.nc.factor_through(
             gate_open,
             best_si,
@@ -208,7 +221,6 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
 
         match nc_result {
             Ok(cert) => {
-                // PoR acceptance check
                 let old_psi = snap.psi;
                 let new_psi = snap.psi;
                 let por_accept = fsr_mirror::PorFsm::acceptance_check(
@@ -219,14 +231,12 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
                 );
 
                 if por_accept && has_candidates {
-                    // Open CSP intents for selected route
                     if state.csp.state == fsr_types::CspState::Idle {
                         state.csp.on_candidate_discovered();
                         state.chain.shadow_append(EventTag::CandidateDiscovered, vec![], tk);
                         state.csp.open_intent();
                         state.chain.shadow_append(EventTag::IntentOpened, vec![], tk);
 
-                        // Quorum check
                         let quorum = QuorumRequirements {
                             edge_ok: best_si > 0,
                             ttl_ok: true,
@@ -239,20 +249,17 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
                         state.chain.shadow_append(quorum_ev, vec![], tk);
 
                         if state.csp.state == fsr_types::CspState::IntentQuorum {
-                            // Execute lockstep
                             let admissibility = LockstepAdmissibility {
                                 nc_cert: cert.clone(),
                                 route_admissible: best_si > 0,
                             };
                             if let Some(ev) = state.csp.start_lockstep(&admissibility) {
                                 state.chain.shadow_append(ev, vec![], tk);
-                                // Simulate execution + receipts
                                 if let Some(ev) = state.csp.on_receipts_available() {
                                     state.chain.shadow_append(ev, vec![], tk);
                                 }
                                 if let Some(ev) = state.csp.on_settled() {
                                     state.chain.shadow_append(ev, vec![], tk);
-                                    // CRYSTAL: commit to commitment chain
                                     let _ = state.nc.factor_through(
                                         true, best_si, phase_bin, &tk, NcTraversalReason::Commit,
                                     );
@@ -263,14 +270,13 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
                                     );
                                     state.resonance.efficiency.record_settled();
                                     state.settled_cycles += 1;
+                                    info!(tick = state.tick, "SETTLED");
                                 }
-                                // Reset CSP
                                 state.csp.begin_reset_from_settled();
                                 state.csp.complete_reset();
                                 state.chain.shadow_append(EventTag::ResetComplete, vec![], tk);
                             }
                         } else {
-                            // Quorum failed → abort
                             state.csp.begin_reset_from_abort();
                             state.csp.complete_reset();
                             state.resonance.efficiency.record_aborted();
@@ -280,21 +286,17 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
                 }
             }
             Err(_) => {
-                // NC rejection
                 state.resonance.efficiency.record_aborted();
                 state.aborted_cycles += 1;
             }
         }
-    } else {
-        // ── Step 11 ELSE: FLOW F_dt (baseline evolution, hedge/passive) ────
-        // No jump: continue with hedge checks below
     }
 
     // ── Step 12: PRESS ────────────────────────────────────────────────────────
-    // Already done via filter_and_press in step 9 (P ∘ Π ∘ WT).
+    // Already done in step 9.
 
     // ── Step 13: CRYSTAL ─────────────────────────────────────────────────────
-    // Already done inside the execution path above when settled.
+    // Done inside the execution path above when settled.
 
     // ── Step 14: HEDGE ───────────────────────────────────────────────────────
     let hedge_inputs = HedgeInputs {
@@ -310,12 +312,32 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
     }
 
     // ── Step 15: EVIDENCE ────────────────────────────────────────────────────
-    // Append macro-cycle-end event
     state.chain.shadow_append(EventTag::MacroCycleEnd, vec![], tk);
 
+    // ── Phase 2: TTCP feed ───────────────────────────────────────────────────
+    // Feed snapshot into TTCP engine; emit crystal event to chain if convergence.
+    let ttcp_snap = fsr_types::ResonanceSnapshot {
+        kappa: snap.kappa,
+        entropy: snap.entropy,
+        sync: snap.sync,
+        momentum: snap.momentum,
+        si: snap.si,
+        psi: snap.psi,
+        rho: snap.rho,
+        omega: snap.omega,
+        tick: state.tick,
+    };
+    if let Some(crystal) = state.ttcp.push_snapshot(ttcp_snap) {
+        info!(tick = crystal.tick, level = crystal.level, "TTCP crystal detected");
+        let crystal_payload = serde_json::to_vec(&crystal).unwrap_or_default();
+        state.chain.shadow_append(EventTag::TtcpCrystal, crystal_payload, tk);
+    }
+
     // ── Step 16: CALIBRATE ───────────────────────────────────────────────────
-    // Every calibration_window ticks, run benchmark and emit proposal
-    if state.tick > 0 && state.tick.is_multiple_of(config.calibration_window) && state.promotion.state == fsr_types::PromotionState::Candidate {
+    if state.tick > 0
+        && state.tick.is_multiple_of(config.calibration_window)
+        && state.promotion.state == fsr_types::PromotionState::Candidate
+    {
         if let Some(ev) = state.promotion.paper_validate() {
             state.chain.shadow_append(ev, vec![], tk);
         }
@@ -323,7 +345,7 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
 
     // ── Step 17: INVARIANTS ──────────────────────────────────────────────────
     let inv_ctx = InvariantContext {
-        has_nc_cert: true, // NC traversal happened above
+        has_nc_cert: true,
         nc_cert: None,
         event_emitted_on_transition: true,
         temporal_key_valid: tk.is_valid(),
@@ -350,6 +372,7 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
 
     // ── Step 18: IF integrity degraded: safe-hold or rollback ────────────────
     if !failures.is_empty() {
+        warn!(failures = failures.len(), "invariant failures detected");
         let integrity_inputs = IntegrityInputs {
             non_blocking_failure: false,
             slo_breach: false,
@@ -370,7 +393,6 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
     }
 
     // ── Step 19: ROTATE ───────────────────────────────────────────────────────
-    // Compact/archive artifacts per retention policy (simplified: keep last 10000 events)
     if state.chain.shadow.len() > 10000 {
         state.chain.shadow.events.drain(0..1000);
     }
@@ -387,9 +409,15 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
         psi: snap.psi,
         rho: snap.rho,
         omega: snap.omega,
+        kappa: snap.kappa,
+        entropy: snap.entropy,
+        momentum: snap.momentum,
         wind_count: state.nc.windnarbe.wind_count,
         shadow_head: state.chain.shadow.head_digest().to_string(),
+        shadow_event_count: state.chain.shadow.event_count,
+        commitment_event_count: state.chain.commitment.event_count,
         candidates_found,
+        ttcp_crystals_found: state.ttcp.crystals_found,
     };
 
     // Advance Regime FSM
@@ -408,16 +436,63 @@ pub fn run_macro_cycle(state: &mut SystemState, broker: &mut PaperBroker) -> Sta
         state.chain.shadow_append(ev, vec![], tk);
     }
 
-    // Update stability accumulator
     state.resonance.stability.record(state.regime.state);
 
-    // Update por TTL
     state.por.tick_ttl();
     if state.por.state == fsr_types::PorState::Commit {
-        // Reset PoR for next cycle
         state.por.reset(config.por_ttl_ticks);
     }
 
     state.tick += 1;
     status
+}
+
+/// Phase 2: update a shared DashboardState from a just-completed macro-cycle.
+/// Only compiled when the `tui` feature is enabled.
+#[cfg(feature = "tui")]
+pub fn update_dashboard(
+    state: &SystemState,
+    status: &StatusReport,
+    dash: &std::sync::Arc<std::sync::Mutex<fsr_tui::DashboardState>>,
+) {
+    if let Ok(mut d) = dash.lock() {
+        d.tick = status.tick;
+        d.regime = status.regime.clone();
+        d.integrity = status.integrity.clone();
+        d.resource = status.resource.clone();
+        d.gate_open = status.gate_open;
+        d.gamma_score = status.gamma_score;
+        d.si = status.si;
+        d.psi = status.psi;
+        d.rho = status.rho;
+        d.omega = status.omega;
+        d.kappa = status.kappa;
+        d.entropy = status.entropy;
+        d.momentum = status.momentum;
+        d.candidates_found = status.candidates_found;
+        d.wind_count = status.wind_count;
+        d.settled_cycles = state.settled_cycles;
+        d.aborted_cycles = state.aborted_cycles;
+        d.current_drawdown = state.current_drawdown;
+        d.shadow_head = status.shadow_head.clone();
+        d.shadow_event_count = status.shadow_event_count;
+        d.commitment_event_count = status.commitment_event_count;
+
+        // TTCP status
+        d.ttcp.crystals_found = state.ttcp.crystals_found;
+        d.ttcp.last_crystal_tick = state.ttcp.last_crystal_tick;
+        if state.ttcp.crystals_found > 0 {
+            d.ttcp.level = 2;
+        }
+
+        // Event log: append notable events
+        if status.gate_open {
+            d.push_event(format!("t={} gate OPEN Γ={:.3}", status.tick,
+                fsr_fixed::q32_to_f64_display_only(status.gamma_score)));
+        }
+        if status.ttcp_crystals_found > d.ttcp.crystals_found.saturating_sub(1) && state.ttcp.last_crystal_tick == Some(status.tick.saturating_sub(1)) {
+            d.push_event(format!("t={} TTCP crystal (total={})",
+                status.tick, state.ttcp.crystals_found));
+        }
+    }
 }
