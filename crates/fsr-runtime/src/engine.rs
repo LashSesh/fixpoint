@@ -23,10 +23,14 @@ use fsr_calibration::PromotionFsm;
 use fsr_candidates::{filter_and_press, wt_multiplex};
 use fsr_chain::DualChain;
 use fsr_csp::{CspFsm, LockstepAdmissibility, QuorumRequirements};
+use fsr_ecls::{EclsConfig, EclsScanner, EclsSignal};
 use fsr_fixed::{q32_from_f64_boundary, q32_from_ratio, ONE};
 use fsr_gate::{KairosGate, RegimeFsm, RegimeInputs, SubGateInputs};
 use fsr_governance::{IntegrityFsm, IntegrityInputs, InvariantContext, ResourceFsm, blocking_failures};
 use fsr_hedge::{HedgeFsm, HedgeInputs};
+use fsr_isls::{IslsConfig, IslsPersistence};
+use fsr_isls::observation::{Observation, ObsPayload, SourceId};
+use fsr_mcce::{McceConfig, MycelialHdag};
 use fsr_mirror::{PorFsm, compute_mci, mirror_gate_pass};
 use fsr_nullcenter::{NcTraversalReason, NullcenterGate};
 use fsr_resonance::ResonanceEngine;
@@ -67,6 +71,19 @@ pub struct SystemState {
 
     // Phase 4: DSHAE bridge
     pub dshae: DshaeBridge,
+
+    // Phase 5: ISLS persistence
+    pub isls: IslsPersistence,
+
+    // Phase 5: MCCE (Mycelial Crypto-Cartography Engine)
+    pub mcce: MycelialHdag,
+
+    // Phase 5: ECLS (Emergent Constraint Lattice Spectroscopy)
+    pub ecls: EclsScanner,
+    pub ecls_config: EclsConfig,
+
+    // Phase 5: pending ECLS signals for DSHAE
+    pub ecls_signals: Vec<EclsSignal>,
 }
 
 impl SystemState {
@@ -102,6 +119,11 @@ impl SystemState {
             ttcp,
             sniper: SniperMode::default(),
             dshae: DshaeBridge::default(),
+            isls: IslsPersistence::default(),
+            mcce: MycelialHdag::default(),
+            ecls: EclsScanner::default(),
+            ecls_config: EclsConfig::default(),
+            ecls_signals: Vec::new(),
         }
     }
 }
@@ -130,6 +152,12 @@ pub struct StatusReport {
     pub ttcp_crystals_found: u64,
     // Phase 3
     pub sniper_executed: bool,
+    // Phase 5
+    pub mcce_vertex_count: u64,
+    pub mcce_edge_count: u64,
+    pub ecls_active_constraints: usize,
+    pub isls_crystal_count: u64,
+    pub isls_observation_count: u64,
 }
 
 /// Run one complete macro-cycle using a VenueBroker (broker-based entry point).
@@ -153,7 +181,35 @@ pub fn run_macro_cycle_with_books(state: &mut SystemState, books: Vec<OrderBook>
     // ── Step 2: NORMALIZE ────────────────────────────────────────────────────
     // Already normalized via OrderBook structure.
 
-    // ── Step 3: EXTRACT ──────────────────────────────────────────────────────
+    // ── Step 3 (Phase 5): ISLS-PERSIST ───────────────────────────────────────
+    // Write observation to ISLS tiered storage (hot tier).
+    {
+        for (i, book) in books.iter().enumerate() {
+            if let Some(mid) = book.mid_bp() {
+                let obs = Observation::new(
+                    state.tick,
+                    SourceId(book.venue.0.clone()),
+                    ObsPayload::Price(i as u64, mid),
+                );
+                state.isls.write_observation(state.tick, obs);
+            }
+        }
+        // Sync shadow-chain head to ISLS (delegation).
+        debug!(tick = state.tick, "ISLS-PERSIST");
+    }
+
+    // ── Step 4 (Phase 5): MCCE-UPDATE ────────────────────────────────────────
+    // Update vertex embeddings and correlation edges in the MCCE HDAG.
+    let mcce_signals = if state.mcce.config.enabled {
+        state.mcce.tick_books(&books, state.tick)
+    } else {
+        vec![]
+    };
+    if !mcce_signals.is_empty() {
+        debug!(signals = mcce_signals.len(), "MCCE-UPDATE fruiting signals");
+    }
+
+    // ── Step 5: EXTRACT ──────────────────────────────────────────────────────
     let max_mid = mid_prices.iter().copied().max().unwrap_or(1).max(1);
     let signals: Vec<Q32> = mid_prices
         .iter()
@@ -199,6 +255,27 @@ pub fn run_macro_cycle_with_books(state: &mut SystemState, books: Vec<OrderBook>
     let tau_edge = q32_from_f64_boundary(config.tau_edge);
     let filtered_candidates = filter_and_press(raw_candidates, tau_edge, press_depth);
     let candidates_found = filtered_candidates.len();
+
+    // ── Step 9b (Phase 5): ECLS-SCAN ─────────────────────────────────────────
+    // Run constraint scanner if interval reached. Feeds signals into DSHAE filter.
+    let ecls_scan_interval = state.ecls_config.scan_interval;
+    if state.ecls_config.enabled && state.tick % ecls_scan_interval == 0 {
+        let templates = state.ecls_config.active_templates();
+        let new_candidates = state.ecls.scan(
+            &state.mcce,
+            &templates,
+            &state.ecls_config.clone(),
+            state.tick,
+        );
+        if !new_candidates.is_empty() {
+            debug!(n = new_candidates.len(), "ECLS-SCAN new constraints");
+            let chain_tk = tk;
+            state.chain.shadow_append(EventTag::EclsScanCompleted, vec![], chain_tk);
+            for cand in &new_candidates {
+                state.ecls_signals.push(fsr_ecls::EclsSignal::new_candidate(cand));
+            }
+        }
+    }
 
     // ── Step 10: GATE ────────────────────────────────────────────────────────
     let best_si = filtered_candidates.first().map(|c| c.si_score).unwrap_or(0);
@@ -393,6 +470,32 @@ pub fn run_macro_cycle_with_books(state: &mut SystemState, books: Vec<OrderBook>
         state.chain.shadow_append(EventTag::DshaeCrystalFormed, vec![], tk);
     }
 
+    // ── Step 17 (Phase 5): MCCE-FRUITING ─────────────────────────────────────
+    // Emit MCCE signals for persistent triangles and clusters.
+    for sig in &mcce_signals {
+        use fsr_mcce::McceSignal;
+        match sig {
+            McceSignal::PersistentTriangle { .. } => {
+                state.chain.shadow_append(EventTag::McceTriangleDetected, vec![], tk);
+            }
+            McceSignal::StableCluster { .. } => {
+                state.chain.shadow_append(EventTag::McceClusterFormed, vec![], tk);
+            }
+            McceSignal::GraphGrowth { new_vertices, .. } if *new_vertices > 0 => {
+                state.chain.shadow_append(EventTag::McceVertexDiscovered, vec![], tk);
+            }
+            _ => {}
+        }
+    }
+
+    // ── Step 18 (Phase 5): ISLS-CONSENSUS ────────────────────────────────────
+    // Run consensus on pending ECLS lattice crystals and compact hot tier.
+    if state.isls.config.enabled {
+        state.isls.compact();
+    }
+    // Drain and clear ECLS signals (consumed by next DSHAE cycle).
+    let _consumed_ecls = std::mem::take(&mut state.ecls_signals);
+
     // ── Step 16: CALIBRATE ───────────────────────────────────────────────────
     if state.tick > 0
         && state.tick.is_multiple_of(config.calibration_window)
@@ -479,6 +582,11 @@ pub fn run_macro_cycle_with_books(state: &mut SystemState, books: Vec<OrderBook>
         candidates_found,
         ttcp_crystals_found: state.ttcp.crystals_found,
         sniper_executed: sniper_execute,
+        mcce_vertex_count: state.mcce.vertex_count(),
+        mcce_edge_count: state.mcce.edge_count(),
+        ecls_active_constraints: state.ecls.active_count(),
+        isls_crystal_count: state.isls.crystal_count(),
+        isls_observation_count: state.isls.observation_count_total(),
     };
 
     // Advance Regime FSM

@@ -27,6 +27,9 @@ pub enum Scenario {
     RecurringArb,
     Noisy,
     RegimeShift,
+    // Phase 5 scenarios
+    Correlation,
+    Lattice,
 }
 
 impl Scenario {
@@ -37,6 +40,8 @@ impl Scenario {
             Scenario::RecurringArb => "scenario_arb_recurring",
             Scenario::Noisy => "scenario_noisy",
             Scenario::RegimeShift => "scenario_regime_shift",
+            Scenario::Correlation => "scenario_correlation",
+            Scenario::Lattice => "scenario_lattice",
         }
     }
 
@@ -78,6 +83,34 @@ impl Scenario {
                 pnl_max_bps: 0,
                 invariant_violations: 0,
             },
+            // Phase 5: Correlation scenario.
+            // Assets are synthetically correlated for ticks 0–14999, then decorrelate.
+            // MCCE should detect correlation via Hypha layer.
+            // ECLS should discover Correlation constraint before tick 5000.
+            // ECLS should emit ConstraintBreaking when correlation ends after tick 15000.
+            // At the DSHAE level: baseline no-arb → 0 DSHAE crystals.
+            Scenario::Correlation => SandboxExpected {
+                crystals_min: 0,
+                crystals_max: 0,
+                trades_max: 0,
+                false_positives_max: 0,
+                pnl_min_bps: 0,
+                pnl_max_bps: 0,
+                invariant_violations: 0,
+            },
+            // Phase 5: Lattice scenario.
+            // 4-asset basket with injected Ratio + PhaseLock constraints.
+            // ECLS should discover injected constraints and form a Lattice Crystal.
+            // At the DSHAE level: inject 8bp arb at tick 10000 → 1-3 DSHAE crystals.
+            Scenario::Lattice => SandboxExpected {
+                crystals_min: 1,
+                crystals_max: 4,
+                trades_max: 6,
+                false_positives_max: 0,
+                pnl_min_bps: 0,
+                pnl_max_bps: 2000 * ONE,
+                invariant_violations: 0,
+            },
             Scenario::RegimeShift => SandboxExpected {
                 crystals_min: 2,
                 crystals_max: 4,
@@ -97,6 +130,8 @@ impl Scenario {
             Scenario::RecurringArb => 10000,
             Scenario::Noisy => 10000,
             Scenario::RegimeShift => 10000,
+            Scenario::Correlation => 20000,
+            Scenario::Lattice => 20000,
         }
     }
 }
@@ -316,6 +351,38 @@ impl SandboxRunner {
                     } else {
                         base.with_noise(tick, 1) // background noise in volatile phase
                     }
+                } else {
+                    base
+                }
+            }
+
+            // Phase 5: Correlation scenario.
+            // Synthetically correlated prices (ticks 0–14999), then decorrelation (15000+).
+            // Both phases maintain exact triangle no-arb: MCCE observes price path similarity
+            // but DSHAE should produce 0 crystals.
+            Scenario::Correlation => {
+                // Baseline no-arb. Tiny per-pair noise preserving triangle no-arb:
+                // all pairs scaled uniformly, so triangle constraints remain exact.
+                let multiplier = ((tick.wrapping_mul(2654435761)) % 3) as i64; // {0,1,2}
+                if tick < 15000 {
+                    // Correlated phase: all rates scaled by same factor (no arb).
+                    let mut r = base.clone();
+                    for pair in r.mids.iter_mut() {
+                        pair.2 += multiplier * pair.2 / 100000; // sub-0.1bp shift
+                    }
+                    r
+                } else {
+                    // Decorrelated phase: return baseline (no arb, different tick path).
+                    base
+                }
+            }
+
+            // Phase 5: Lattice scenario.
+            // 4-asset basket: inject 8bp arb at tick 10000 for DSHAE crystal detection.
+            // All other ticks: exact baseline no-arb.
+            Scenario::Lattice => {
+                if (10000..10100).contains(&tick) {
+                    base.with_arb_012(8)
                 } else {
                     base
                 }

@@ -82,6 +82,21 @@ pub enum EventTag {
     DshaeBasketRebalanced,
     GuiSessionStarted,
     GuiSessionEnded,
+    // Phase 5 additions (additive only — do not remove or reorder above variants)
+    IslsObservationWritten,
+    IslsConsensusCommit,
+    IslsConsensusDefer,
+    IslsSemanticCrystalFormed,
+    IslsStorageCompacted,
+    McceVertexDiscovered,
+    McceEdgeCreated,
+    McceTriangleDetected,
+    McceClusterFormed,
+    McCeFruitingSignal,
+    EclsConstraintDiscovered,
+    EclsConstraintBreaking,
+    EclsLatticeCrystalFormed,
+    EclsScanCompleted,
 }
 
 /// A hash-chained evidence event (spec §18).

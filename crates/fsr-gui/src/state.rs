@@ -10,6 +10,43 @@ pub const MAX_PNL_HISTORY: usize = 1000;
 /// Maximum crystal history.
 pub const MAX_CRYSTAL_HISTORY: usize = 100;
 
+// ── Phase 5 display structs ───────────────────────────────────────────────────
+
+/// MCCE display state (Phase 5).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct McceDisplay {
+    pub vertex_count: u64,
+    pub edge_count: u64,
+    pub graph_density: f32,
+    pub cluster_count: usize,
+    pub total_signals: u64,
+}
+
+/// ECLS display state (Phase 5).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct EclsDisplay {
+    pub active_constraints: usize,
+    pub lattice_crystals: u64,
+    pub breaking_events: u64,
+    pub recent_events: VecDeque<String>,
+}
+
+/// ISLS display state (Phase 5).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct IslsDisplay {
+    pub hot_count: u64,
+    pub warm_count: u64,
+    pub cold_count: u64,
+    pub total_observations: u64,
+    pub crystal_count: u64,
+    pub replay_verified: bool,
+    pub shadow_head: String,
+    pub shadow_event_count: u64,
+    pub commit_event_count: u64,
+    /// Rolling vertex count history for growth chart (max 200 pts).
+    pub vertex_history: VecDeque<u64>,
+}
+
 /// Run mode string.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunMode {
@@ -117,6 +154,11 @@ pub struct GuiState {
     // Candidates.
     pub candidates_found: usize,
 
+    // Phase 5: MCCE/ECLS/ISLS display.
+    pub mcce: McceDisplay,
+    pub ecls: EclsDisplay,
+    pub isls: IslsDisplay,
+
     // Control.
     pub quit_requested: bool,
 }
@@ -140,6 +182,9 @@ impl Default for GuiState {
             crystal_log: VecDeque::new(),
             event_log: VecDeque::new(),
             candidates_found: 0,
+            mcce: McceDisplay::default(),
+            ecls: EclsDisplay::default(),
+            isls: IslsDisplay::default(),
             quit_requested: false,
         }
     }

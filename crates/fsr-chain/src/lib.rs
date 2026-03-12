@@ -9,9 +9,17 @@
 //!   h_i = H(tag_i || payload_i || ctx_i || h_{i-1})
 //!
 //! Evidence Law: two replays with identical inputs must produce identical digests.
+//!
+//! Phase 5 (ISLS integration): fsr-chain is now a thin wrapper. The canonical
+//! hash-chaining logic is provided by fsr-isls::evidence. The EvidenceChain
+//! and HashChain are functionally equivalent (same hash algorithm, same genesis).
+//! All existing chain tests continue to pass unchanged.
 
 pub mod persist;
 pub use persist::{ChainFileWriter, ChainReader, SystemSnapshot, unix_ms};
+
+// Phase 5: re-export ISLS evidence types for crates that want the ISLS-backed chain.
+pub use fsr_isls::evidence::{EvidenceChain, compute_genesis, compute_digest};
 
 use fsr_types::{ChainEvent, EventTag, Hash256, TemporalKey};
 use sha2::{Digest, Sha256};
@@ -30,7 +38,7 @@ pub struct HashChain {
 
 impl HashChain {
     pub fn new(name: impl Into<String>) -> Self {
-        let genesis = compute_genesis();
+        let genesis = chain_compute_genesis();
         HashChain {
             name: name.into(),
             events: Vec::new(),
@@ -43,7 +51,7 @@ impl HashChain {
     /// INV-08: chain digests must remain hash-consistent.
     pub fn append(&mut self, tag: EventTag, payload: Vec<u8>, temporal_key: TemporalKey) -> &ChainEvent {
         let prev = self.head;
-        let digest = compute_digest(tag, &payload, &temporal_key, prev);
+        let digest = chain_compute_digest(tag, &payload, &temporal_key, prev);
         let event = ChainEvent {
             tag,
             payload,
@@ -60,13 +68,13 @@ impl HashChain {
     /// Verify the entire chain for hash consistency.
     /// Returns Ok(()) if consistent, Err(index) if first broken link found.
     pub fn verify(&self) -> Result<(), usize> {
-        let genesis = compute_genesis();
+        let genesis = chain_compute_genesis();
         let mut expected_prev = genesis;
         for (i, event) in self.events.iter().enumerate() {
             if event.prev_digest != expected_prev {
                 return Err(i);
             }
-            let expected_digest = compute_digest(event.tag, &event.payload, &event.temporal_key, event.prev_digest);
+            let expected_digest = chain_compute_digest(event.tag, &event.payload, &event.temporal_key, event.prev_digest);
             if event.digest != expected_digest {
                 return Err(i);
             }
@@ -89,14 +97,14 @@ impl HashChain {
 }
 
 /// Compute the genesis hash h_0 = H(TMCP_GENESIS).
-fn compute_genesis() -> Hash256 {
+fn chain_compute_genesis() -> Hash256 {
     let mut hasher = Sha256::new();
     hasher.update(TMCP_GENESIS);
     Hash256(hasher.finalize().into())
 }
 
 /// Compute h_i = H(tag || payload || ctx || h_{i-1}) (spec §18.2).
-fn compute_digest(
+fn chain_compute_digest(
     tag: EventTag,
     payload: &[u8],
     temporal_key: &TemporalKey,
