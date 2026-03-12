@@ -1,4 +1,4 @@
-# FIXPOINT SWARM:
+# FIXPOINT SWARM (AinSoft-R v3)
 
 ### "The Topology of Greed"
 
