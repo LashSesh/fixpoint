@@ -1,10 +1,10 @@
-# FIXPOINT SWARM (AinSoft-R v3)
+# FIXPOINT SWARM-R (AinSoft-R v5)
 
 ### "The Topology of Greed"
 
 ---
 
-Deterministisches Rust-Handelssystem mit Phasensynchronisation, DSHAE-Arbitrage-Engine zur holographischen Phasenraumprojektion und Desktop-GUI
+Deterministisches Rust-Handelssystem mit Phasensynchronisation, DSHAE-Arbitrage-Engine zur holographischen Phasenraumprojektion, Intelligence Substrate (ISLS/MCCE/ECLS) und Desktop-GUI
 
 ---
 
@@ -23,22 +23,25 @@ Darum sage ich euch: Sorgt euch nicht um euer Leben, was ihr essen und trinken w
 5. [Konfiguration](#konfiguration)
 6. [CLI-Referenz](#cli-referenz)
 7. [Phase-4-Komponenten](#phase-4-komponenten)
-8. [Validierungs-Sandbox](#validierungs-sandbox)
-9. [Entwicklung](#entwicklung)
-10. [Invarianten](#invarianten)
-11. [Lizenz](#lizenz)
+8. [Phase-5-Komponenten](#phase-5-komponenten)
+9. [Validierungs-Sandbox](#validierungs-sandbox)
+10. [Entwicklung](#entwicklung)
+11. [Invarianten](#invarianten)
+12. [Phasen-Übersicht](#phasen-übersicht)
+13. [Lizenz](#lizenz)
 
 ---
 
 ## Überblick
 
-FIXPOINT SWARM ist ein vollständig deterministisches, kettengesichertes Handelssystem, das in Rust implementiert ist. Es kombiniert:
+FIXPOINT SWARM-R ist ein vollständig deterministisches, kettengesichertes Handelssystem, das in Rust implementiert ist. Es kombiniert:
 
 - **Resonanz-Engine** (ψ/ρ/ω-Metriken) für Marktzustandsbewertung
 - **TTCP-Kristallisierung** (Tri-Carrier-Phase-Konvergenz) für Handelssignale
 - **DSHAE-Engine** (Dual-Simplex Holographic Arbitrage Engine) für Dreiecksarbitrage
 - **Dual-Chain-Integrität** (Shadow + Commitment Chain, SHA-256-verkettete Events)
-- **Desktop-GUI** (egui/eframe) mit Live-Dashboard und Sandbox-Validierung
+- **Intelligence Substrate** (ISLS + MCCE + ECLS) — persistentes topologisches Gedächtnis und Constraint-Erkennung (Phase 5)
+- **Desktop-GUI** (egui/eframe) mit Live-Dashboard, Sandbox-Validierung und Mycelium-Visualisierung
 
 Das System ist vollständig auditierbar: jede Zustandsänderung wird als unveränderliches Event in der Chain gespeichert. Ein deterministischer Replay mit identischen Inputs produziert Bit-für-Bit identische Outputs.
 
@@ -47,82 +50,100 @@ Das System ist vollständig auditierbar: jede Zustandsänderung wird als unverä
 ## Architektur
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  fsr-runtime (CLI: fsr)              │
-│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐ │
-│  │ Macro-   │  │ DSHAE-   │  │  TTCP-Engine       │ │
-│  │ Cycle    │  │ Bridge   │  │  (Kristalle)       │ │
-│  └──────────┘  └──────────┘  └────────────────────┘ │
-└───────────────────────┬─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                  fsr-runtime (CLI: fsr)                       │
+│  ┌──────────┐  ┌──────────┐  ┌────────────────────────────┐  │
+│  │ Macro-   │  │ DSHAE-   │  │  TTCP-Engine               │  │
+│  │ Cycle    │  │ Bridge   │  │  (Kristalle)               │  │
+│  │ (24 Schr)│  └──────────┘  └────────────────────────────┘  │
+│  └────┬─────┘                                                 │
+│       │ Phase 5: ISLS-PERSIST / MCCE-UPDATE / ECLS-SCAN      │
+│  ┌────▼─────────────────────────────────────────────────────┐ │
+│  │  Intelligence Substrate                                   │ │
+│  │  fsr-isls (Ledger) │ fsr-mcce (Graph) │ fsr-ecls (Scan) │ │
+│  └──────────────────────────────────────────────────────────┘ │
+└───────────────────────┬──────────────────────────────────────┘
                         │ Arc<Mutex<GuiState>>
-┌───────────────────────▼─────────────────────────────┐
-│                fsr-gui (Desktop-GUI)                  │
-│  Dashboard │ P&L │ Kristalle │ TTCP │ Risiko │ Sandbox│
-└─────────────────────────────────────────────────────┘
+┌───────────────────────▼──────────────────────────────────────┐
+│                fsr-gui (Desktop-GUI)                           │
+│  Dashboard │ P&L │ Kristalle │ TTCP │ Risiko │ Config │      │
+│  Sandbox   │ Mycelium (neu) │ Constraints (neu) │            │
+│  Knowledge (neu)                                              │
+└──────────────────────────────────────────────────────────────┘
 
 Kern-Crates:
   fsr-types    ←─ gemeinsame Typen (Q32, EventTag, OrderBook …)
   fsr-fixed    ←─ Q32-Festkomma-Arithmetik (32.32, ONE = 1<<32)
-  fsr-chain    ←─ Dual-Chain (Shadow + Commitment, SHA-256)
+  fsr-chain    ←─ Dual-Chain (Shadow + Commitment, SHA-256) + ISLS-Wrapper
   fsr-resonance ← Resonanz-Engine (SI, ψ, ρ, ω, κ, Entropie)
   fsr-gate     ←─ Kairos-Gate (Regime-FSM, Gamma-Score)
   fsr-ttcp     ←─ TTCP-Kristallisierung (3-Ebenen-Kaskade)
   fsr-dshae    ←─ DSHAE-Engine (Phase 4, Dreiecksarbitrage)
+  fsr-isls     ←─ Intelligent Semantic Ledger Substrate (Phase 5)
+  fsr-mcce     ←─ Mycelial Crypto-Cartography Engine (Phase 5)
+  fsr-ecls     ←─ Emergent Constraint Lattice Spectroscopy (Phase 5)
   fsr-tui      ←─ Terminal-UI (ratatui)
 ```
 
-### 20-Schritte-Makrozyklus
+### 24-Schritte-Makrozyklus
 
-Jeder Tick durchläuft exakt 20 Schritte (Spec §7.2):
+Jeder Tick durchläuft exakt 24 Schritte (Spec §7.2 + Phase-5-Erweiterung):
 
 ```
-1. OBSERVE      – OrderBooks einlesen
-2. NORMALIZE    – Preise normalisieren
-3. EXTRACT      – Q32-Signale extrahieren
-4. TEMPORAL     – TriCarrier / TemporalKey
-5. RESOURCE     – Ressourcenbudget prüfen
-6. REGIME       – RegimeFSM fortschalten (Alpha/Beta/Gamma)
-7. INTEGRITY    – IntegritätsFSM (Healthy/Degraded/SafeHold)
-8. NULLCENTER   – Windnarbe-Gate
-9. CANDIDATES   – Kandidaten filtern + Press top-k
-10. CSP         – Lockstep-Zulässigkeit
-11. EXECUTE     – Handelsausführung (Paper / Live)
-12. PRESS       – (bereits in 9)
-13. CRYSTAL     – TTCP-Kristallerkennung
-14. HEDGE       – HedgeFSM
-15. EVIDENCE    – MacroCycleEnd in Shadow-Chain
-16. CALIBRATE   – Förderungs-FSM
-17. INVARIANTS  – 15 Invarianten prüfen
-18. SAFE-HOLD   – Bei Verletzung einfrieren
-19. ROTATE      – Chain-Rotation
-20. STATUS      – StatusReport ausgeben
-    + Phase 4: DSHAE-Tick nach Schritt 15
+1.  OBSERVE       – OrderBooks einlesen
+2.  NORMALIZE     – Preise normalisieren
+3.  ISLS-PERSIST  – Observation in ISLS Hot-Tier schreiben          ← NEU Phase 5
+4.  MCCE-UPDATE   – Mycelial HDAG aktualisieren                     ← NEU Phase 5
+5.  EXTRACT       – Q32-Signale extrahieren
+6.  TEMPORAL      – TriCarrier / TemporalKey
+7.  RESOURCE      – Ressourcenbudget prüfen
+8.  REGIME        – RegimeFSM fortschalten (Alpha/Beta/Gamma)
+9.  INTEGRITY     – IntegritätsFSM (Healthy/Degraded/SafeHold)
+9b. ECLS-SCAN     – Constraint-Scan (alle scan_interval Ticks)      ← NEU Phase 5
+10. NULLCENTER    – Windnarbe-Gate
+11. CANDIDATES    – Kandidaten filtern + Press top-k
+12. CSP           – Lockstep-Zulässigkeit
+13. EXECUTE       – Handelsausführung (Paper / Live)
+14. CRYSTAL       – TTCP-Kristallerkennung
+15. HEDGE         – HedgeFSM
+16. EVIDENCE      – MacroCycleEnd in Shadow-Chain
+17. MCCE-FRUITING – Mycelium-Signale emittieren                     ← NEU Phase 5
+18. ISLS-CONSENSUS– Resonant-Consensus + Storage-Compaction         ← NEU Phase 5
+19. CALIBRATE     – Förderungs-FSM
+20. INVARIANTS    – 15 Invarianten prüfen
+21. SAFE-HOLD     – Bei Verletzung einfrieren
+22. ROTATE        – Chain-Rotation
+23. STATUS        – StatusReport ausgeben
+    + Phase 4: DSHAE-Tick nach Schritt 16
 ```
 
 ---
 
 ## Crate-Verzeichnis
 
-| Crate | Beschreibung |
-|-------|-------------|
-| `fsr-types` | Gemeinsame Typen: `Q32`, `EventTag`, `OrderBook`, FSM-States |
-| `fsr-fixed` | Q32-Festkomma (32.32-Bit): `q32_mul`, `q32_ln`, `q32_from_ratio` |
-| `fsr-temporal` | `TriCarrier`, `TemporalKey`, `KairosScheduler` |
-| `fsr-nullcenter` | Windnarbe-Gate, NC-Zertifikat |
-| `fsr-resonance` | Resonanz-Engine: SI, ψ, ρ, ω, κ, Entropie, Impuls |
-| `fsr-gate` | `KairosGate`, `RegimeFsm` (Alpha/Beta/Gamma) |
-| `fsr-mirror` | POR-FSM, MCI-Berechnung |
-| `fsr-candidates` | Kandidatenfilterung, `wt_multiplex`, `filter_and_press` |
-| `fsr-csp` | CSP-FSM, Lockstep-Zulässigkeit, Quorum |
-| `fsr-hedge` | Hedge-FSM (Safe/Hedging/Unwind/Recovery) |
-| `fsr-calibration` | Förderungs-Workflow, 5-Gate-Pipeline |
-| `fsr-chain` | Dual-Chain (SHA-256), Persistenz, Replay |
-| `fsr-governance` | 15 Invarianten, Integrity-FSM, Resource-FSM |
-| `fsr-ttcp` | TTCP-Engine (Tri-Carrier-Phase-Konvergenz, 3 Ebenen) |
-| `fsr-tui` | Terminal-UI mit ratatui (Feature: `tui`) |
-| `fsr-runtime` | CLI-Binary `fsr`: alle Befehle, Makrozyklus-Engine |
-| `fsr-dshae` | **Phase 4**: DSHAE-Engine, HIM, Kristallkaskade, Sandbox |
-| `fsr-gui` | **Phase 4**: Desktop-GUI (egui/eframe), alle Panels |
+| Crate | Phase | Beschreibung |
+|-------|-------|-------------|
+| `fsr-types` | 1 | Gemeinsame Typen: `Q32`, `EventTag`, `OrderBook`, FSM-States |
+| `fsr-fixed` | 1 | Q32-Festkomma (32.32-Bit): `q32_mul`, `q32_ln`, `q32_from_ratio` |
+| `fsr-temporal` | 1 | `TriCarrier`, `TemporalKey`, `KairosScheduler` |
+| `fsr-nullcenter` | 1 | Windnarbe-Gate, NC-Zertifikat |
+| `fsr-resonance` | 1 | Resonanz-Engine: SI, ψ, ρ, ω, κ, Entropie, Impuls |
+| `fsr-gate` | 1 | `KairosGate`, `RegimeFsm` (Alpha/Beta/Gamma) |
+| `fsr-mirror` | 1 | POR-FSM, MCI-Berechnung |
+| `fsr-candidates` | 1 | Kandidatenfilterung, `wt_multiplex`, `filter_and_press` |
+| `fsr-csp` | 1 | CSP-FSM, Lockstep-Zulässigkeit, Quorum |
+| `fsr-hedge` | 1 | Hedge-FSM (Safe/Hedging/Unwind/Recovery) |
+| `fsr-calibration` | 2 | Förderungs-Workflow, 5-Gate-Pipeline |
+| `fsr-chain` | 1 | Dual-Chain (SHA-256), Persistenz, Replay; re-exportiert ISLS-EvidenceChain |
+| `fsr-governance` | 1 | 15 Invarianten, Integrity-FSM, Resource-FSM |
+| `fsr-ttcp` | 2 | TTCP-Engine (Tri-Carrier-Phase-Konvergenz, 3 Ebenen) |
+| `fsr-tui` | 2 | Terminal-UI mit ratatui (Feature: `tui`) |
+| `fsr-runtime` | 1 | CLI-Binary `fsr`: alle Befehle, 24-Schritte-Makrozyklus-Engine |
+| `fsr-dshae` | 4 | DSHAE-Engine, HIM, Kristallkaskade, 7-Szenario-Sandbox |
+| `fsr-gui` | 4 | Desktop-GUI (egui/eframe 0.29), alle Panels inkl. Phase-5-Tabs |
+| `fsr-isls` | **5** | **Intelligent Semantic Ledger Substrate**: Tiered Storage, EvidenceChain, SemanticCrystal, PersistentGraph, Resonant Consensus |
+| `fsr-mcce` | **5** | **Mycelial Crypto-Cartography Engine**: 4-Layer HDAG (Spore/Hypha/Mycelium/Fruiting), Pearson-Korrelation, petgraph |
+| `fsr-ecls` | **5** | **Emergent Constraint Lattice Spectroscopy**: READ-ONLY Scanner, 7 Constraint-Templates, Inverse Weaving, Thermodynamik |
 
 ---
 
@@ -143,7 +164,7 @@ cargo build --workspace --exclude fsr-gui
 # Nur CLI-Binary
 cargo build --bin fsr
 
-# GUI-Binary
+# GUI-Binary (Phase 4 + Phase 5 Panels)
 cargo build --bin fsr-gui
 
 # Mit TUI-Feature
@@ -156,20 +177,23 @@ cargo build --release --workspace --exclude fsr-gui
 ### Tests ausführen
 
 ```bash
-# Alle Tests (ohne GUI)
-cargo test --workspace --exclude fsr-gui
+# Alle Tests
+cargo test --workspace
 
-# Nur DSHAE-Tests
+# Nur DSHAE-Tests (Phase 4)
 cargo test -p fsr-dshae
 
 # Phase-4-Integrationstests
 cargo test -p fsr-chain --test phase4_integration
 
-# Einzelnen Test ausführen
-cargo test -p fsr-dshae test_all_5_scenarios_pass
+# Phase-5-Integrationstests (17 Tests: ISLS, MCCE, ECLS, alle 7 Szenarien)
+cargo test -p fsr-chain --test phase5_integration
+
+# Alle 7 Sandbox-Szenarien
+cargo test -p fsr-chain --test phase5_integration test_all_7_scenarios_pass
 ```
 
-Aktueller Teststand: **211 Tests, 0 Fehler** (176 Phase 1–3 + 35 Phase 4).
+Aktueller Teststand: **228+ Tests, 0 Fehler** (Phase 1–4: 211 + Phase 5: 17).
 
 ---
 
@@ -258,10 +282,10 @@ fsr promote-cmd --approve <proposal-id>              # Genehmigen
 fsr promote-cmd --status                             # Status anzeigen
 ```
 
-### `fsr gui` — Desktop-GUI (Phase 4)
+### `fsr gui` — Desktop-GUI (Phase 4 + Phase 5)
 
 ```bash
-fsr gui --sandbox                    # Sandbox-Validierung (5 Szenarien)
+fsr gui --sandbox                    # Sandbox-Validierung (7 Szenarien)
 fsr gui --config balanced.yaml       # Live-Dashboard im Paper-Modus
 fsr gui --sandbox --width 1920 --height 1080
 
@@ -325,84 +349,170 @@ Anzahl der Punkte: `C(n,3) = n·(n−1)·(n−2)/6`
 
 **Axle-Invariante**: Für jede Dreiecksposition gilt: Nettoexposition jeder Währung = 0 (geschlossene Schleife).
 
-#### Achsen-Konfiguration (`DshaeConfig`)
-
-```rust
-DshaeConfig {
-    enabled: false,          // Im Shadow-Modus standardmäßig deaktiviert
-    mode: DshaeMode::Shadow,
-    basket: BasketConfig {
-        min_basket_size: 3,
-        max_basket_size: 8,
-    },
-    dual_simplex: DualSimplexConfig {
-        cycle_length: 3,
-        notional_per_leg: 1000 * ONE,    // Q32
-        anti_phase_tolerance: ONE/100,    // 1%
-        rebalance_window: 5,
-    },
-    holographic: HolographicConfig {
-        q32_scale: 1_000_000,
-        min_points: 4,
-    },
-    cascade: CascadeConfig {
-        max_depth: 3,
-        dk_contraction_rate: 0.85,        // Q32-Faktor
-        press_top_k: 16,
-    },
-    crystal: CrystalConfig {
-        tau_edge_bp: 5,                   // 5 Basispunkte Mindestkante
-        max_age_ticks: 3,
-        max_concurrent: 2,
-    },
-}
-```
-
 ### Desktop-GUI (`fsr-gui`)
 
 Die GUI kommuniziert über `Arc<Mutex<GuiState>>` mit dem Engine-Thread.
 
 #### Tabs
 
-| Tab | Inhalt |
-|-----|--------|
-| **Dashboard** | FSM-Zustände, Resonanzmetriken, Gate-Status, Event-Log |
-| **P&L-Chart** | Kumulativer Gewinn/Verlust, TTCP-Delta-Verläufe |
-| **Kristalle** | DSHAE-Kristall-Tabelle, HIM-Streudiagramm |
-| **TTCP** | Konvergenz-Score, 3-Ebenen-Kaskade |
-| **Risiko** | Drawdown, Win-Rate, Chain-Integrität |
-| **Config** | Geladene YAML-Konfiguration |
-| **Sandbox** | 5-Szenario-Validierung mit PASS/FAIL |
+| Tab | Phase | Inhalt |
+|-----|-------|--------|
+| **Dashboard** | 1–4 | FSM-Zustände, Resonanzmetriken, Gate-Status, Event-Log |
+| **P&L-Chart** | 2 | Kumulativer Gewinn/Verlust, TTCP-Delta-Verläufe |
+| **Kristalle** | 4 | DSHAE-Kristall-Tabelle, HIM-Streudiagramm |
+| **TTCP** | 2 | Konvergenz-Score, 3-Ebenen-Kaskade |
+| **Risiko** | 1 | Drawdown, Win-Rate, Chain-Integrität |
+| **Config** | 1 | Geladene YAML-Konfiguration |
+| **Sandbox** | 4 | 7-Szenario-Validierung mit PASS/FAIL |
+| **Mycelium** | **5** | HDAG-Dot-Plot (Vertices/Edges), Cluster-Stats, Lernverlauf |
+| **Constraints** | **5** | Aktive Constraints (ECLS), Lattice-Crystal-Log, Breaking-Alerts |
+| **Knowledge** | **5** | ISLS Tier-Stats, Beobachtungen, Semantic Crystals, Graph-Wachstum |
 
-#### GUI starten
+---
 
-```bash
-# Sandbox-Validierung
-fsr-gui --sandbox
+## Phase-5-Komponenten
 
-# Live-Dashboard (Paper-Modus)
-fsr-gui --config balanced.yaml
+### ISLS — Intelligent Semantic Ledger Substrate (`fsr-isls`)
 
-# Über fsr-Wrapper
-fsr gui --sandbox
-fsr gui --config balanced.yaml
+ISLS ist die persistente Wissensgrundlage des Systems. Es speichert alle Beobachtungen append-only in drei Speicher-Tiers (ISLS Axiom 3.3):
+
+```
+Hot  → Warm  → Cold
+(letzte 3600 Ticks) → (90 Tage) → (Archiv)
+```
+
+**Kern-Typen:**
+
+| Typ | Beschreibung |
+|-----|-------------|
+| `EntityId = u64` | Kanonische Entitäts-ID (DefaultHasher) |
+| `EvidenceChain` | SHA-256-verkettete Ereigniskette (identische Digest-Funktion wie HashChain) |
+| `PersistentGraph` | Vertex/Edge-Store für MCCE-HDAG |
+| `SemanticCrystal` | Kondensiertes topologisches Wissens-Fragment |
+| `TieredStorage` | Hot/Warm/Cold-Verwaltung mit `compact()` |
+| `IslsPersistence` | Top-Level-Koordinator (Graph + Storage + Crystals + 2 Chains) |
+
+**Resonant Consensus:**
+```rust
+score = stability × coherence × evidence   // Q32-Dreifach-Multiplikation
+if score >= commit_threshold (¾):          // Commit → SemanticCrystal
+    Commit(proof)
+else:
+    Defer
+```
+
+**fsr-chain Thin-Wrapper**: `fsr-chain` re-exportiert `EvidenceChain`, `compute_genesis` und `compute_digest` aus `fsr-isls`. `HashChain` und `EvidenceChain` produzieren für gleiche Inputs identische Digests.
+
+---
+
+### MCCE — Mycelial Crypto-Cartography Engine (`fsr-mcce`)
+
+MCCE ist das Langzeitgedächtnis der Plattform. Je länger es läuft, desto präziser werden DSHAE-Signale (MCCE-Leverage-Prinzip).
+
+#### 4-Schichten-Architektur
+
+```
+Eingabe (OrderBooks / Preise)
+        │
+        ▼
+┌───────────────────┐
+│  Spore Layer      │  Auto-Discovery: erzeugt Vertices (Token/Exchange/Pool)
+└────────┬──────────┘
+         │
+         ▼
+┌───────────────────┐
+│  Hypha Layer      │  Pearson-Korrelation mit Exponential-Decay
+│                   │  ρ_new = α·ρ_alt + (1-α)·ρ_aktuell
+│                   │  weight *= (1 - decay_rate) pro Tick
+└────────┬──────────┘
+         │
+         ▼
+┌───────────────────┐
+│  Mycelium Layer   │  TTCP-Triangulation (O(n³), max 50 Vertices)
+│                   │  Union-Find Cluster-Erkennung
+└────────┬──────────┘
+         │
+         ▼
+┌───────────────────┐
+│  Fruiting Layer   │  Signal-Emission: StableCluster / PersistentTriangle
+│                   │  CorrelationDecay / GraphGrowth
+└───────────────────┘
+```
+
+**5D-Embedding** pro Vertex: `[ψ, ρ, ω, momentum, entropy]`
+
+**Konfiguration (`McceConfig`):**
+```rust
+McceConfig {
+    enabled: true,
+    hypha_window_ticks: 500,       // Korrelations-Fenster
+    hypha_min_rho: ONE * 3 / 10,  // Mindeskorrelation (0.3)
+    hypha_decay_rate: ONE / 200,   // Decay pro Tick (0.5%)
+    embedding_update_interval: 10,
+    fruiting_interval: 100,        // Signal-Emission alle 100 Ticks
+}
+```
+
+**Hinweis**: `petgraph = "0.6"` ist ausschließlich in `fsr-mcce` als Abhängigkeit vorhanden.
+
+---
+
+### ECLS — Emergent Constraint Lattice Spectroscopy (`fsr-ecls`)
+
+ECLS scannt das MCCE-HDAG **READ-ONLY** auf emergente Marktconstraints.
+
+#### Constraint-Templates
+
+| Template | Phase 5 aktiv | Beschreibung |
+|----------|:---:|-------------|
+| `Band` | ✓ | Preisband um k·σ |
+| `Ratio` | ✓ | Stabiles Preisverhältnis zwischen zwei Assets |
+| `Correlation` | ✓ | Pearson-Korrelation ≥ ρ_target ± δ |
+| `Topological` | ✓ | Betti-Zahl einer Cluster-Komponente |
+| `PhaseLock` | ✓ | Synchrone Bewegungsmuster |
+| `Granger` | ✗ (Phase 6) | Granger-Kausalität (zurückgestellt) |
+| `Spectral` | ✗ (Phase 6) | Spektralkohärenz (zurückgestellt) |
+
+**Inverse Weaving**: Konsistente Constraint-Kandidaten werden zu `LatticeCrystal`-Gruppen zusammengeführt. Die thermodynamische freie Energie bewertet die Stabilität:
+
+```
+F = (1 − mean_stability) × ONE
+```
+
+**ECLS-Signale**: `StableLattice` | `ConstraintBreaking` | `NewConstraintCandidate`
+
+---
+
+### Phase-5 EventTags
+
+14 neue Tags wurden additiv an die bestehende `EventTag`-Enum angehängt (niemals umgeordnet):
+
+```rust
+IslsObservationWritten, IslsConsensusCommit, IslsConsensusDefer,
+IslsSemanticCrystalFormed, IslsStorageCompacted,
+McceVertexDiscovered, McceEdgeCreated, McceTriangleDetected,
+McceClusterFormed, McCeFruitingSignal,
+EclsConstraintDiscovered, EclsConstraintBreaking,
+EclsLatticeCrystalFormed, EclsScanCompleted
 ```
 
 ---
 
 ## Validierungs-Sandbox
 
-Die Sandbox enthält 5 vorberechnete Szenarien zur DSHAE-Validierung. Alle Szenarien sind vollständig deterministisch (kein Netzwerkzugriff, kein Paper-Modus erforderlich).
+Die Sandbox enthält **7 vorberechnete Szenarien** zur DSHAE-Validierung. Alle Szenarien sind vollständig deterministisch (kein Netzwerkzugriff, kein Paper-Modus erforderlich).
 
 ### Szenarien
 
 | Nr. | Name | Beschreibung | Erwartetes Ergebnis |
 |-----|------|-------------|---------------------|
 | 1 | **Calm** | Keine Arbitrage, ruhige Preise | 0 Kristalle |
-| 2 | **SingleArb** | Einmalige 10-bp-Arbitrage bei Tick 2500 | 1–4 Kristalle |
+| 2 | **SingleArb** | Einmalige 10-bp-Arbitrage bei Tick 2500 | 1–3 Kristalle |
 | 3 | **RecurringArb** | 5 Arb-Fenster (3,5,8,12,15 bp) | 3–8 Kristalle |
 | 4 | **Noisy** | Sub-2-bp-Rauschen, kein echter Arb | 0 Kristalle (Falsch-Positiv-Test) |
-| 5 | **RegimeShift** | Volatilitätswechsel + 2 Arb-Events | 2–6 Kristalle |
+| 5 | **RegimeShift** | Volatilitätswechsel + 2 Arb-Events | ≥2 Kristalle |
+| 6 | **Correlation** | Phase 5: Korrelation → Dekorrelation (20.000 Ticks) | 0 DSHAE-Kristalle |
+| 7 | **Lattice** | Phase 5: 4-Asset-Korb mit 8-bp-Arb bei Tick 10000 | 1–4 Kristalle |
 
 ### Bewertungskriterien (je Szenario)
 
@@ -420,12 +530,12 @@ use fsr_dshae::{SandboxRunner, Scenario};
 let runner = SandboxRunner::with_default_config();
 
 // Einzelnes Szenario
-let result = runner.run_scenario(Scenario::SingleArb);
+let result = runner.run_scenario(Scenario::Lattice);
 assert!(result.passed);
 println!("Kristalle: {}", result.actual_crystals);
 
-// Alle 5 Szenarien
-for scenario in [Calm, SingleArb, RecurringArb, Noisy, RegimeShift] {
+// Alle 7 Szenarien
+for scenario in [Calm, SingleArb, RecurringArb, Noisy, RegimeShift, Correlation, Lattice] {
     let r = runner.run_scenario(scenario);
     println!("{}: {}", r.scenario, if r.passed { "PASS" } else { "FAIL" });
 }
@@ -442,6 +552,8 @@ fixtures/sandbox/
   scenario_arb_recurring_000.rec
   scenario_noisy_000.rec
   scenario_regime_shift_000.rec
+  scenario_correlation_000.rec      ← Phase 5 (20.000 Ticks)
+  scenario_lattice_000.rec          ← Phase 5 (20.000 Ticks)
 ```
 
 ---
@@ -452,7 +564,7 @@ fixtures/sandbox/
 
 ```
 fixpoint/
-├── Cargo.toml               # Workspace-Root
+├── Cargo.toml               # Workspace-Root (21 Crates)
 ├── Cargo.lock
 ├── README.md
 ├── fixtures/
@@ -469,13 +581,16 @@ fixpoint/
     ├── fsr-csp/             # CSP-FSM
     ├── fsr-hedge/           # Hedge-FSM
     ├── fsr-calibration/     # Förderungs-Workflow
-    ├── fsr-chain/           # Dual-Chain
+    ├── fsr-chain/           # Dual-Chain + ISLS-Thin-Wrapper
     ├── fsr-governance/      # 15 Invarianten
     ├── fsr-ttcp/            # TTCP-Engine
     ├── fsr-tui/             # Terminal-UI
-    ├── fsr-runtime/         # CLI-Binary (fsr)
+    ├── fsr-runtime/         # CLI-Binary (fsr), 24-Schritte-Engine
     ├── fsr-dshae/           # DSHAE-Engine (Phase 4)
-    └── fsr-gui/             # Desktop-GUI (Phase 4)
+    ├── fsr-gui/             # Desktop-GUI (Phase 4 + Phase 5 Panels)
+    ├── fsr-isls/            # Intelligence Substrate: Ledger (Phase 5)
+    ├── fsr-mcce/            # Intelligence Substrate: Graph (Phase 5)
+    └── fsr-ecls/            # Intelligence Substrate: Scanner (Phase 5)
 ```
 
 ### Q32-Festkomma-Arithmetik
@@ -567,16 +682,21 @@ Zusätzlich zu den 15 System-Invarianten erzwingt die DSHAE-Engine die **Axle-In
 
 Toleranz: `ε = ONE / 1000` (0.1% in Q32).
 
+### ISLS Axiom 3.3 (Phase 5)
+
+Alle drei Speicher-Tiers (Hot/Warm/Cold) sind **append-only**. Kein Datensatz wird jemals gelöscht oder überschrieben — nur von Hot nach Warm nach Cold befördert.
+
 ---
 
 ## Phasen-Übersicht
 
-| Phase | Version | Inhalt |
-|-------|---------|--------|
-| Phase 1 | v1.0 | Kern-Engine, Chain, Resonanz, 15 Invarianten |
-| Phase 2 | v2.0 | Persistenz, TUI, TTCP, Hot-Reload, JSON-Logging |
-| Phase 3 | v3.1 | Live-Venues, Sniper-Modus, Backtest, Förderungs-Workflow |
-| Phase 4 | v4.0 | DSHAE-Engine, HIM, Sandbox, Desktop-GUI |
+| Phase | Version | Crates | Inhalt |
+|-------|---------|--------|--------|
+| Phase 1 | v1.0 | 13 | Kern-Engine, Chain, Resonanz, 15 Invarianten |
+| Phase 2 | v2.0 | +2 | Persistenz, TUI, TTCP, Hot-Reload, JSON-Logging |
+| Phase 3 | v3.1 | — | Live-Venues, Sniper-Modus, Backtest, Förderungs-Workflow |
+| Phase 4 | v4.0 | +2 | DSHAE-Engine, HIM, Sandbox (5 Szenarien), Desktop-GUI |
+| Phase 5 | v5.0 | **+3** | **Intelligence Substrate: ISLS + MCCE + ECLS, 24-Schritte-Zyklus, 7-Szenario-Sandbox, 3 neue GUI-Tabs** |
 
 ---
 
