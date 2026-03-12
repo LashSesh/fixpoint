@@ -1,4 +1,5 @@
-# AinSoft-R: "Greed" - FIXPOINT SWARM
+# AinSoft-R: "Greed" 
+FIXPOINT SWARM
 *Deterministisches Rust-Handelssystem mit Phasensynchronisation, DSHAE-Arbitrage-Engine zur holographischen Phasenraumprojektion und Desktop-GUI*
 ---
 "Niemand kann zwei Herren dienen: Entweder er wird den einen hassen und den andern lieben, oder er wird an dem einen hängen und den andern verachten. Ihr könnt nicht Gott dienen und dem Mammon.
@@ -24,7 +25,7 @@ Darum sage ich euch: Sorgt euch nicht um euer Leben, was ihr essen und trinken w
 
 ## Überblick
 
-FIXPOINT SWARM-R ist ein vollständig deterministisches, kettengesichertes Handelssystem, das in Rust implementiert ist. Es kombiniert:
+FIXPOINT SWARM ist ein vollständig deterministisches, kettengesichertes Handelssystem, das in Rust implementiert ist. Es kombiniert:
 
 - **Resonanz-Engine** (ψ/ρ/ω-Metriken) für Marktzustandsbewertung
 - **TTCP-Kristallisierung** (Tri-Carrier-Phase-Konvergenz) für Handelssignale
