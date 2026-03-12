@@ -1,7 +1,5 @@
 # FIXPOINT SWARM:
 
----
-
 ### "The Topology of Greed"
 
 ---
