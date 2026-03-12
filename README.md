@@ -1,4 +1,4 @@
-"# FIXPOINT SWARM: "Topological Greed"
+# FIXPOINT SWARM: "Topological Greed"
 
 *Deterministisches Rust-Handelssystem mit Phasensynchronisation, DSHAE-Arbitrage-Engine zur holographischen Phasenraumprojektion und Desktop-GUI*
 ---
