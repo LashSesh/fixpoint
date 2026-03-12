@@ -1,5 +1,6 @@
 # FIXPOINT SWARM:
-The Topology of Greed
+## "The Topology of Greed"
+
 ---
 
 Deterministisches Rust-Handelssystem mit Phasensynchronisation, DSHAE-Arbitrage-Engine zur holographischen Phasenraumprojektion und Desktop-GUI
