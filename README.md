@@ -1,12 +1,13 @@
 # AinSoft-R: "Greed"
 **FIXPOINT SWARM**
+---
+
 "Niemand kann zwei Herren dienen: Entweder er wird den einen hassen und den andern lieben, oder er wird an dem einen hängen und den andern verachten. Ihr könnt nicht Gott dienen und dem Mammon.
 Darum sage ich euch: Sorgt euch nicht um euer Leben, was ihr essen und trinken werdet; auch nicht um euren Leib, was ihr anziehen werdet. Ist nicht das Leben mehr als die Nahrung und der Leib mehr als die Kleidung?"
 - Mt 6,24-25
 ---
 
 **Deterministisches Rust-Handelssystem mit Phasensynchronisation, DSHAE-Arbitrage-Engine zur holographischen Phasenraumprojektion und Desktop-GUI**
-
 ---
 
 ## Inhaltsverzeichnis
