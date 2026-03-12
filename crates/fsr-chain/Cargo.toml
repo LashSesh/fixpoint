@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 fsr-types = { path = "../fsr-types" }
 fsr-fixed = { path = "../fsr-fixed" }
+fsr-isls = { path = "../fsr-isls" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -18,4 +19,6 @@ fsr-tui = { path = "../fsr-tui" }
 fsr-governance = { path = "../fsr-governance" }
 fsr-calibration = { path = "../fsr-calibration" }
 fsr-dshae = { path = "../fsr-dshae" }
+fsr-mcce = { path = "../fsr-mcce" }
+fsr-ecls = { path = "../fsr-ecls" }
 serde_json = { workspace = true }

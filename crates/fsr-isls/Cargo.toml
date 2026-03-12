@@ -1,0 +1,15 @@
+[package]
+name = "fsr-isls"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FSR Phase 5: Intelligent Semantic Ledger Substrate (ISLS)"
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+bincode = { workspace = true }
+anyhow = { workspace = true }

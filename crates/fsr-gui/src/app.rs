@@ -16,6 +16,10 @@ pub enum Tab {
     Risk,
     Config,
     Sandbox,
+    // Phase 5 tabs
+    Mycelium,
+    Constraints,
+    Knowledge,
 }
 
 impl Tab {
@@ -28,6 +32,9 @@ impl Tab {
             Tab::Risk => "Risk",
             Tab::Config => "Config",
             Tab::Sandbox => "Sandbox",
+            Tab::Mycelium => "Mycelium",
+            Tab::Constraints => "Constraints",
+            Tab::Knowledge => "Knowledge",
         }
     }
 }
@@ -85,12 +92,13 @@ impl eframe::App for FsrGuiApp {
         // ── Top bar: tabs + status line ───────────────────────────────────────
         TopBottomPanel::top("tab_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("FSR v4").color(theme::ACCENT_BLUE).size(13.0));
+                ui.label(RichText::new("FSR v5").color(theme::ACCENT_BLUE).size(13.0));
                 ui.separator();
 
                 for tab in [
                     Tab::Dashboard, Tab::PnlChart, Tab::Crystals, Tab::Ttcp,
                     Tab::Risk, Tab::Config, Tab::Sandbox,
+                    Tab::Mycelium, Tab::Constraints, Tab::Knowledge,
                 ] {
                     let selected = self.active_tab == tab;
                     let color = if selected { theme::ACCENT_BLUE } else { theme::TEXT_SECONDARY };
@@ -149,6 +157,9 @@ impl eframe::App for FsrGuiApp {
                     Tab::Risk => crate::panels::risk::render(ui, &state),
                     Tab::Config => crate::panels::config::render(ui, &state, &self.config_yaml),
                     Tab::Sandbox => self.sandbox.render(ui),
+                    Tab::Mycelium => crate::panels::mycelium::render(ui, &state),
+                    Tab::Constraints => crate::panels::constraints::render(ui, &state),
+                    Tab::Knowledge => crate::panels::knowledge::render(ui, &state),
                 }
             });
         });

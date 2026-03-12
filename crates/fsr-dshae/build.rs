@@ -25,6 +25,8 @@ fn main() {
         ("scenario_arb_recurring", 1000),
         ("scenario_noisy", 1000),
         ("scenario_regime_shift", 1000),
+        ("scenario_correlation", 2000),
+        ("scenario_lattice", 2000),
     ];
 
     for &(name, ticks) in scenarios {
@@ -98,6 +100,34 @@ fn tick_mids(scenario: &str, tick: u64) -> Vec<(u64, u64, i64)> {
                 } else if tick >= 550 && tick < 580 {
                     mids[1].2 = 7912 + 8; // 10bp
                 }
+            }
+        }
+        "scenario_correlation" => {
+            if tick < 1500 {
+                // Correlated phase: synchronized noise (all rates move together).
+                let sync_noise = ((tick.wrapping_mul(2654435761)) % 3) as i64 - 1; // {-1,0,1}
+                for pair in mids.iter_mut() {
+                    let bp_delta = sync_noise * pair.2 / 10000;
+                    pair.2 += bp_delta;
+                }
+            } else {
+                // Decorrelated phase: independent noise per pair.
+                for (idx, pair) in mids.iter_mut().enumerate() {
+                    let noise_seed = (tick.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+                        ^ (idx as u64 * 1000)) as i64;
+                    let noise = ((noise_seed % 7) - 3).abs() % 4;
+                    pair.2 += noise * pair.2 / 10000;
+                }
+            }
+        }
+        "scenario_lattice" => {
+            // Stable ratio constraint with slow drift, inject arb at ticks 1000-1100.
+            if tick >= 1000 && tick < 1100 {
+                mids[1].2 = 7912 + 7912 * 8 / 10000; // 8bp arb
+            } else {
+                let drift = ((tick / 100) % 3) as i64; // 0,1,2 cycle
+                mids[0].2 = base[0].2 + drift * base[0].2 / 1000;
+                mids[3].2 = base[3].2 + drift * base[3].2 / 1000;
             }
         }
         _ => {}

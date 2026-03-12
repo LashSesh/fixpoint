@@ -1,0 +1,16 @@
+[package]
+name = "fsr-ecls"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FSR Phase 5: Emergent Constraint Lattice Spectroscopy (ECLS)"
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+fsr-isls = { path = "../fsr-isls" }
+fsr-mcce = { path = "../fsr-mcce" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+anyhow = { workspace = true }

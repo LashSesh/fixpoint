@@ -31,6 +31,9 @@ fsr-chain = { path = "../fsr-chain" }
 fsr-governance = { path = "../fsr-governance" }
 fsr-ttcp = { path = "../fsr-ttcp" }
 fsr-dshae = { path = "../fsr-dshae" }
+fsr-isls = { path = "../fsr-isls" }
+fsr-mcce = { path = "../fsr-mcce" }
+fsr-ecls = { path = "../fsr-ecls" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 serde_json = { workspace = true }

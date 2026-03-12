@@ -1,0 +1,17 @@
+[package]
+name = "fsr-mcce"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FSR Phase 5: Mycelial Crypto-Cartography Engine (MCCE)"
+
+[dependencies]
+fsr-types = { path = "../fsr-types" }
+fsr-fixed = { path = "../fsr-fixed" }
+fsr-isls = { path = "../fsr-isls" }
+fsr-resonance = { path = "../fsr-resonance" }
+fsr-ttcp = { path = "../fsr-ttcp" }
+petgraph = "0.6"
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
