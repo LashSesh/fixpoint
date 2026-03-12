@@ -1,5 +1,5 @@
-# AinSoft-R: "Greed" 
-FIXPOINT SWARM
+"# FIXPOINT SWARM: "Topological Greed"
+
 *Deterministisches Rust-Handelssystem mit Phasensynchronisation, DSHAE-Arbitrage-Engine zur holographischen Phasenraumprojektion und Desktop-GUI*
 ---
 "Niemand kann zwei Herren dienen: Entweder er wird den einen hassen und den andern lieben, oder er wird an dem einen hängen und den andern verachten. Ihr könnt nicht Gott dienen und dem Mammon.
