@@ -1,6 +1,6 @@
 # FIXPOINT SWARM-R (AinSoft-R v5)
 
-### "Topology of Klemm" (Greed)
+### "Topology of Greed"
 
 ---
 
