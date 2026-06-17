@@ -13,16 +13,9 @@
 
 use fsr_types::market::OrderBook;
 
-// ── VenueBroker trait ─────────────────────────────────────────────────────────
+// ── VenueBroker trait (canonical definition lives in fsr-types) ───────────────
 
-/// Uniform interface for paper and live brokers.
-pub trait VenueBroker: Send {
-    /// Advance the internal clock / receive the next data frame.
-    fn advance_all(&mut self);
-    /// Return current order books for all tracked symbols.
-    /// `&mut self` because synthetic brokers regenerate books on call.
-    fn all_books(&mut self) -> Vec<OrderBook>;
-}
+pub use fsr_types::market::VenueBroker;
 
 // ── PaperBroker implements VenueBroker ────────────────────────────────────────
 

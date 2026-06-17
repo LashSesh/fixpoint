@@ -1,0 +1,20 @@
+[package]
+name = "fsr-ibkr"
+version.workspace = true
+edition.workspace = true
+
+[features]
+# Live TWS/IB-Gateway connection (requires local TWS or IB Gateway running)
+live-data = ["dep:tokio"]
+
+[dependencies]
+fsr-types    = { path = "../fsr-types" }
+fsr-fixed    = { path = "../fsr-fixed" }
+fsr-contract = { path = "../fsr-contract" }
+serde        = { workspace = true }
+thiserror    = { workspace = true }
+anyhow       = { workspace = true }
+tracing      = { workspace = true }
+
+# Optional: only needed for live TWS socket connection
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"], optional = true }
