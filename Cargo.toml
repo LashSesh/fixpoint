@@ -21,6 +21,11 @@ members = [
     "crates/fsr-isls",
     "crates/fsr-mcce",
     "crates/fsr-ecls",
+    # Phase 6 — Commodity futures on IBKR
+    "crates/fsr-contract",
+    "crates/fsr-spread",
+    "crates/fsr-ibkr",
+    "crates/fsr-oms",
 ]
 resolver = "2"
 

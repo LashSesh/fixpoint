@@ -990,6 +990,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fsr-contract"
+version = "3.0.0"
+dependencies = [
+ "fsr-fixed",
+ "fsr-types",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "fsr-csp"
 version = "3.0.0"
 dependencies = [
@@ -1082,6 +1092,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "fsr-ibkr"
+version = "3.0.0"
+dependencies = [
+ "anyhow",
+ "fsr-contract",
+ "fsr-fixed",
+ "fsr-types",
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fsr-isls"
 version = "3.0.0"
 dependencies = [
@@ -1126,6 +1150,19 @@ dependencies = [
  "fsr-types",
  "serde",
  "sha2",
+]
+
+[[package]]
+name = "fsr-oms"
+version = "3.0.0"
+dependencies = [
+ "anyhow",
+ "fsr-contract",
+ "fsr-fixed",
+ "fsr-types",
+ "serde",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
@@ -1177,6 +1214,17 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "fsr-spread"
+version = "3.0.0"
+dependencies = [
+ "fsr-contract",
+ "fsr-fixed",
+ "fsr-types",
+ "serde",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

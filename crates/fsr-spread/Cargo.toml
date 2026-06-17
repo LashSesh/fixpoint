@@ -1,0 +1,11 @@
+[package]
+name = "fsr-spread"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fsr-types    = { path = "../fsr-types" }
+fsr-fixed    = { path = "../fsr-fixed" }
+fsr-contract = { path = "../fsr-contract" }
+serde        = { workspace = true }
+thiserror    = { workspace = true }

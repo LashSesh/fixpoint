@@ -120,6 +120,17 @@ pub struct CandidateLeg {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RouteSignal(pub Q32);
 
+/// Uniform interface for paper and live brokers.
+///
+/// Defined here (fsr-types) so venue adapters in separate crates can implement
+/// it without depending on fsr-runtime.
+pub trait VenueBroker: Send {
+    /// Advance internal clock / drain latest market-data frame.
+    fn advance_all(&mut self);
+    /// Return current order-book snapshots for all tracked instruments.
+    fn all_books(&mut self) -> Vec<OrderBook>;
+}
+
 /// ResonanceSnapshot — computed each macro-cycle tick (spec §16, §8).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ResonanceSnapshot {
